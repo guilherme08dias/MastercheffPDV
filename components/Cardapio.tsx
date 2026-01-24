@@ -29,6 +29,8 @@ export const Cardapio: React.FC = () => {
     const [address, setAddress] = useState('');
     const [addressNumber, setAddressNumber] = useState('');
     const [neighborhood, setNeighborhood] = useState('');
+    const [addressType, setAddressType] = useState<'house' | 'apartment'>('house');
+    const [addressComplement, setAddressComplement] = useState(''); // Bloco/Apto
 
     // Estado de Pagamento
     const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'cash'>('pix');
@@ -266,14 +268,21 @@ export const Cardapio: React.FC = () => {
             return;
         }
 
+        // Validação: Apartamento requer campo de complemento
+        if (orderType === 'delivery' && addressType === 'apartment' && !addressComplement.trim()) {
+            alert('Por favor, informe o Bloco / Número do Apartamento.');
+            return;
+        }
+
         if (cart.length === 0) return;
 
         setSending(true);
         try {
-            // Montar endereço completo
+            // Montar endereço completo (incluindo complemento se apartamento)
             const neighborhoodName = deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.name || '';
+            const complementText = addressType === 'apartment' && addressComplement.trim() ? ` - ${addressComplement}` : '';
             const fullAddress = orderType === 'delivery'
-                ? `${address}, ${addressNumber} - ${neighborhoodName} `
+                ? `${address}, ${addressNumber}${complementText} - ${neighborhoodName}`
                 : '';
 
             // CALCULAR NÚMERO DO PEDIDO NO TURNO
@@ -306,7 +315,8 @@ export const Cardapio: React.FC = () => {
                     daily_number: nextNumber,
                     neighborhood_id: orderType === 'delivery' ? selectedNeighborhoodId : null,
                     address_street: orderType === 'delivery' ? address : null,
-                    address_number: orderType === 'delivery' ? addressNumber : null
+                    address_number: orderType === 'delivery' ? addressNumber : null,
+                    address_complement: orderType === 'delivery' && addressType === 'apartment' ? addressComplement : null
                 })
                 .select()
                 .single();
@@ -727,6 +737,41 @@ export const Cardapio: React.FC = () => {
                                                     <span>Taxa de Entrega ({deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.name})</span>
                                                     <span>+ R$ {(deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.fee || 0).toFixed(2)}</span>
                                                 </div>
+                                            )}
+
+                                            {/* Seletor Tipo de Moradia */}
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setAddressType('house'); setAddressComplement(''); }}
+                                                    className={`p-3 rounded-xl font-bold transition-all border text-sm ${addressType === 'house'
+                                                        ? 'bg-[#FFCC00] text-black border-[#FFCC00]'
+                                                        : 'bg-[#2C2C2E] text-gray-400 border-transparent hover:bg-[#3C3C3E]'
+                                                        }`}
+                                                >
+                                                    🏠 Casa
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAddressType('apartment')}
+                                                    className={`p-3 rounded-xl font-bold transition-all border text-sm ${addressType === 'apartment'
+                                                        ? 'bg-[#FFCC00] text-black border-[#FFCC00]'
+                                                        : 'bg-[#2C2C2E] text-gray-400 border-transparent hover:bg-[#3C3C3E]'
+                                                        }`}
+                                                >
+                                                    🏢 Apartamento
+                                                </button>
+                                            </div>
+
+                                            {/* Campo Condicional: Bloco/Nº Apto */}
+                                            {addressType === 'apartment' && (
+                                                <input
+                                                    type="text"
+                                                    value={addressComplement}
+                                                    onChange={(e) => setAddressComplement(e.target.value)}
+                                                    placeholder="Bloco / Nº do Apartamento *"
+                                                    className="w-full p-4 bg-[#2C2C2E] text-white rounded-xl placeholder-gray-500 focus:ring-2 focus:ring-[#FFCC00] focus:outline-none border-2 border-orange-500/50"
+                                                />
                                             )}
                                         </div>
                                     </div>

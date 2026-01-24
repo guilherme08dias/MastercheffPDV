@@ -73,6 +73,10 @@ export interface Order {
   discount_amount?: number;
   discount_type?: 'fixed' | 'percentage';
   discount_reason?: string;
+  // Campos de Endereço Estruturados
+  address_street?: string;
+  address_number?: string;
+  address_complement?: string;
 }
 
 export interface OrderItem {

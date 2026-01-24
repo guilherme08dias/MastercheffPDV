@@ -348,6 +348,17 @@
                     if (changeMatch) changeInfo = `Troco para R$ ${changeMatch[1]}`;
                 }
 
+                // Construir endereço completo a partir dos campos estruturados
+                let fullStructuredAddress = '';
+                if (order.address_street) {
+                    fullStructuredAddress = `${order.address_street}, ${order.address_number || 'S/N'}`;
+                    if (order.address_complement) {
+                        fullStructuredAddress += ` - ${order.address_complement}`;
+                    }
+                }
+                // Priorizar endereço estruturado sobre o extraído das notes
+                const finalDeliveryAddress = fullStructuredAddress || deliveryAddress;
+
                 // GERAÇÃO DE QR CODES (apenas para pedidos web)
                 let whatsappQrDataUrl = '';
                 let mapsQrDataUrl = '';
@@ -388,9 +399,33 @@
                     }
                 }
 
-                printArea.innerHTML = `
+                // ============================================================
+                // FUNÇÃO PARA GERAR HTML DO RECIBO
+                // isMotoboyVia: true = Via do Motoboy (campos destacados)
+                // ============================================================
+                function generateReceiptHTML(isMotoboyVia = false) {
+                    // Estilos condicionais para Via do Motoboy
+                    const addressStyle = isMotoboyVia 
+                        ? 'font-size: 18px; font-weight: 900; margin: 5px 0; background: #000; color: #fff; padding: 8px; border: 3px solid #000;'
+                        : 'font-size: 14px; margin: 3px 0;';
+                    const complementStyle = isMotoboyVia
+                        ? 'font-size: 16px; font-weight: 900; margin: 5px 0; background: #eee; padding: 5px; border: 2px dashed #000;'
+                        : 'font-size: 14px; margin: 3px 0;';
+                    const totalStyle = isMotoboyVia
+                        ? 'font-size: 32px; font-weight: 900; background: #000; color: #fff; padding: 10px;'
+                        : 'font-size: 28px; font-weight: 900;';
+                    const feeStyle = isMotoboyVia
+                        ? 'font-weight: 900; font-size: 18px; background: #eee; padding: 5px;'
+                        : 'font-weight: 800;';
+
+                    return `
                     <div style="width: 72mm; margin: 0 auto; font-family: 'Arial', sans-serif; padding: 0; color: black; font-weight: bold;">
-                        ${isWebOrder ? `
+                        ${isMotoboyVia ? `
+                            <div style="text-align: center; background: #000; color: #fff; padding: 15px; margin-bottom: 10px; border: 4px double #fff;">
+                                <h2 style="font-size: 22px; font-weight: 900; margin: 0;">🛵 VIA DO MOTOBOY 🛵</h2>
+                            </div>
+                        ` : ''}
+                        ${isWebOrder && !isMotoboyVia ? `
                             <div style="text-align: center; background: #000; color: #fff; padding: 10px; margin-bottom: 10px;">
                                 <h2 style="font-size: 16px; font-weight: 900; margin: 0;">🌐 PEDIDO VIA LINK</h2>
                             </div>
@@ -415,7 +450,8 @@
                             ${isWebOrder && order.customer_phone ? `<p style="font-size: 14px; margin: 3px 0;">📞 ${order.customer_phone}</p>` : ''}
                             ${order.type === 'delivery' ? `
                                 <p style="font-size: 18px; font-weight: 800; margin: 8px 0; background: #eee; padding: 5px;">🛵 ENTREGA</p>
-                                ${deliveryAddress ? `<p style="font-size: 14px; margin: 3px 0;">📍 ${deliveryAddress}</p>` : ''}
+                                ${finalDeliveryAddress ? `<p style="${addressStyle}">📍 ${finalDeliveryAddress}</p>` : ''}
+                                ${order.address_complement ? `<p style="${complementStyle}">🏢 APTO: ${order.address_complement}</p>` : ''}
                                 ${neighborhoodName ? `<p style="font-size: 14px; margin: 3px 0;">🏘️ ${neighborhoodName}</p>` : ''}
                             ` : order.type === 'takeaway' ? `
                                 <p style="font-size: 16px; font-weight: 800; margin: 5px 0;">🏪 RETIRADA NO LOCAL</p>
@@ -427,33 +463,19 @@
                         <div style="margin: 15px 0;">
                             ${formattedItems.length > 0 ? formattedItems.map(item => {
                     // Limpar notes (removendo info de entrega/obs/adicionais já listados)
-                    // Mas manter observações reais do usuário
-                    // Os addons agora vêm em 'addons_detail', então não precisamos parsear da string
                     let cleanNotes = item.notes || '';
                     cleanNotes = cleanNotes.replace(/📍\s*.+?(\s*\||$)/g, '').replace(/🏪\s*Retirada(\s*\||$)/g, '').replace(/💵\s*Troco.+?(\s*\||$)/g, '').trim();
-                    // Remove também os addons da string se eles já estiverem formatados lá, pra não duplicar
-                    // Ex: "+ Bacon"
                     cleanNotes = cleanNotes.replace(/\+\s*[\w\s]+/g, '').replace(/\|\s*\|/g, '|').replace(/^\|\s*|\s*\|$/g, '').trim();
 
-                    // Preço base do produto (Total Item - Total Adicionais) / Qtd
                     const totalAddonsPrice = item.addons_detail ? item.addons_detail.reduce((sum, a) => sum + (a.price || 0), 0) : 0;
-
-                    // Se o unit_price já inclui adicionais, subtraímos pra mostrar separado, ou mostramos o total da linha?
-                    // O cliente pediu "Valor individual de cada item e de seus adicionais".
-                    // Vamos assumir que item.product.price é o base, e addons_detail tem os preços extras.
-                    // O item.unit_price salvo no banco É A SOMA. 
-
                     const unitPriceBase = item.unit_price - totalAddonsPrice;
 
                     return `
                                     <div style="margin-bottom: 8px; border-bottom: 1px dotted #ccc; padding-bottom: 5px;">
-                                        <!-- Linha Principal: Qtd - Produto - Preço Base -->
                                         <div style="display: flex; justify-content: space-between; align-items: baseline; font-weight: 900; font-size: 16px;">
                                             <span style="flex: 1;">${item.quantity}x ${item.product_name}</span>
                                             <span style="font-size: 14px;">${formatCurrency(unitPriceBase * item.quantity)}</span>
                                         </div>
-
-                                        <!-- Adicionais (Loop) -->
                                         ${item.addons_detail && item.addons_detail.length > 0 ?
                             item.addons_detail.map(addon => `
                                                 <div style="display: flex; justify-content: space-between; font-size: 12px; color: #444; margin-left: 10px; margin-top: 2px;">
@@ -462,8 +484,6 @@
                                                 </div>
                                             `).join('')
                             : ''}
-
-                                        <!-- Observações -->
                                         ${cleanNotes ? `<div style="padding-left: 0px; font-size: 12px; margin-top: 2px; color: #000;"><p style="font-weight: normal; margin: 0; background: #eee; display: inline-block; padding: 2px 5px;">OBS: ${cleanNotes}</p></div>` : ''}
                                     </div>
                                 `;
@@ -478,25 +498,25 @@
                                 <span>${formatCurrency(subtotal)}</span>
                             </div>
                             ${order.delivery_fee_snapshot > 0 ? `
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: 800;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 5px; ${feeStyle}">
                                     <span>Taxa de Entrega</span>
                                     <span>${formatCurrency(order.delivery_fee_snapshot)}</span>
                                 </div>
                             ` : ''}
-                            <div style="display: flex; justify-content: space-between; font-size: 28px; font-weight: 900; margin-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; margin-top: 10px; ${totalStyle}">
                                 <span>TOTAL</span>
                                 <span>${formatCurrency(order.total)}</span>
                             </div>
                         </div>
                         
-                        ${isWebOrder ? `
+                        ${isWebOrder || isMotoboyVia ? `
                             <div style="border-top: 2px dashed #000; padding-top: 10px; margin-top: 10px;">
                                 <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 800; margin-bottom: 5px;">
                                     <span>PAGAMENTO:</span>
                                     <span>${paymentLabel}</span>
                                 </div>
                                 ${changeInfo ? `
-                                    <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 800;">
+                                    <div style="display: flex; justify-content: space-between; font-size: ${isMotoboyVia ? '18px' : '14px'}; font-weight: 900; ${isMotoboyVia ? 'background: #000; color: #fff; padding: 8px;' : ''}">
                                         <span>TROCO:</span>
                                         <span>${changeInfo}</span>
                                     </div>
@@ -504,7 +524,7 @@
                             </div>
                         ` : ''}
 
-                        ${whatsappQrDataUrl ? `
+                        ${whatsappQrDataUrl && !isMotoboyVia ? `
                             <div style="text-align: center; margin-top: 20px; border-top: 2px dashed #000; padding-top: 15px;">
                                 <img src="${whatsappQrDataUrl}" style="width: 35mm; height: 35mm;" />
                                 <p style="font-size: 10px; margin: 5px 0 0 0;">📲 SCAN PARA WHATSAPP</p>
@@ -520,15 +540,37 @@
                         
                         <div style="margin-top: 30px; text-align: center; border-top: 2px dashed #000; padding-top: 10px;">
                             <p style="font-size: 12px; font-weight: 800; margin: 0;">${new Date().toLocaleString('pt-BR')}</p>
+                            ${isMotoboyVia ? '<p style="font-size: 10px; margin: 5px 0 0 0;">--- VIA DO ENTREGADOR ---</p>' : ''}
                         </div>
                         
                         <!-- Espaço final reduzido para corte -->
                         <div style="height: 5mm;"></div>
                     </div>
                 `;
+                }
 
-                await new Promise(resolve => setTimeout(resolve, 500));
-                window.print();
+                // ============================================================
+                // LÓGICA DE IMPRESSÃO: 2 VIAS PARA DELIVERY
+                // ============================================================
+                if (order.type === 'delivery') {
+                    // VIA 1: Estabelecimento
+                    printArea.innerHTML = generateReceiptHTML(false);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    window.print();
+                    
+                    // Aguardar entre impressões
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    // VIA 2: Motoboy (com destaques)
+                    printArea.innerHTML = generateReceiptHTML(true);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    window.print();
+                } else {
+                    // VIA ÚNICA para pickup/local
+                    printArea.innerHTML = generateReceiptHTML(false);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    window.print();
+                }
 
                 await supabaseClient
                     .from('orders')
@@ -542,7 +584,7 @@
                 stats.totalPrinted++;
                 stats.sessionPrinted++;
                 updateStats();
-                addLog(formatOrderNumber(order.daily_number || order.id), order.customer_name || 'Balcão', '✅ Impresso com sucesso');
+                addLog(formatOrderNumber(order.daily_number || order.id), order.customer_name || 'Balcão', order.type === 'delivery' ? '✅ 2 vias impressas (Delivery)' : '✅ Impresso com sucesso');
                 updateStatus('connected', 'Conectado - Aguardando pedidos...');
 
             } catch (error) {
