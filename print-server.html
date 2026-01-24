@@ -235,6 +235,11 @@
         let stats = { totalPrinted: 0, sessionPrinted: 0 };
         let deliveryAreasMap = {};
 
+        // ============================================================
+        // ANTI-LOOP: Cache local de IDs já impressos (idempotência)
+        // ============================================================
+        const printedIds = new Set();
+
         const statusEl = document.getElementById('status');
         const logEl = document.getElementById('log');
         const printArea = document.getElementById('print-area');
@@ -306,6 +311,28 @@
         }
 
         async function printOrder(order) {
+            // ============================================================
+            // ANTI-LOOP: Verificação de idempotência
+            // ============================================================
+            const orderId = order.id;
+
+            // Se já processamos este ID nesta sessão, ignorar
+            if (printedIds.has(orderId)) {
+                console.log(`🔒 [ANTI-LOOP] Pedido #${orderId} já foi impresso nesta sessão. Ignorando.`);
+                return;
+            }
+
+            // Se o pedido já está marcado como impresso no banco, ignorar
+            if (order.printed === true) {
+                console.log(`🔒 [ANTI-LOOP] Pedido #${orderId} já está marcado como impresso. Ignorando.`);
+                printedIds.add(orderId); // Adiciona ao cache para futuras verificações
+                return;
+            }
+
+            // MARCAR IMEDIATAMENTE no cache local ANTES de qualquer operação
+            printedIds.add(orderId);
+            console.log(`📝 [ANTI-LOOP] Pedido #${orderId} adicionado ao cache de impressão.`);
+
             try {
                 updateStatus('printing', `Imprimindo pedido #${formatOrderNumber(order.daily_number || order.id)}...`);
 
@@ -405,7 +432,7 @@
                 // ============================================================
                 function generateReceiptHTML(isMotoboyVia = false) {
                     // Estilos condicionais para Via do Motoboy
-                    const addressStyle = isMotoboyVia 
+                    const addressStyle = isMotoboyVia
                         ? 'font-size: 18px; font-weight: 900; margin: 5px 0; background: #000; color: #fff; padding: 8px; border: 3px solid #000;'
                         : 'font-size: 14px; margin: 3px 0;';
                     const complementStyle = isMotoboyVia
@@ -462,32 +489,32 @@
                         
                         <div style="margin: 15px 0;">
                             ${formattedItems.length > 0 ? formattedItems.map(item => {
-                    // Limpar notes (removendo info de entrega/obs/adicionais já listados)
-                    let cleanNotes = item.notes || '';
-                    cleanNotes = cleanNotes.replace(/📍\s*.+?(\s*\||$)/g, '').replace(/🏪\s*Retirada(\s*\||$)/g, '').replace(/💵\s*Troco.+?(\s*\||$)/g, '').trim();
-                    cleanNotes = cleanNotes.replace(/\+\s*[\w\s]+/g, '').replace(/\|\s*\|/g, '|').replace(/^\|\s*|\s*\|$/g, '').trim();
+                        // Limpar notes (removendo info de entrega/obs/adicionais já listados)
+                        let cleanNotes = item.notes || '';
+                        cleanNotes = cleanNotes.replace(/📍\s*.+?(\s*\||$)/g, '').replace(/🏪\s*Retirada(\s*\||$)/g, '').replace(/💵\s*Troco.+?(\s*\||$)/g, '').trim();
+                        cleanNotes = cleanNotes.replace(/\+\s*[\w\s]+/g, '').replace(/\|\s*\|/g, '|').replace(/^\|\s*|\s*\|$/g, '').trim();
 
-                    const totalAddonsPrice = item.addons_detail ? item.addons_detail.reduce((sum, a) => sum + (a.price || 0), 0) : 0;
-                    const unitPriceBase = item.unit_price - totalAddonsPrice;
+                        const totalAddonsPrice = item.addons_detail ? item.addons_detail.reduce((sum, a) => sum + (a.price || 0), 0) : 0;
+                        const unitPriceBase = item.unit_price - totalAddonsPrice;
 
-                    return `
+                        return `
                                     <div style="margin-bottom: 8px; border-bottom: 1px dotted #ccc; padding-bottom: 5px;">
                                         <div style="display: flex; justify-content: space-between; align-items: baseline; font-weight: 900; font-size: 16px;">
                                             <span style="flex: 1;">${item.quantity}x ${item.product_name}</span>
                                             <span style="font-size: 14px;">${formatCurrency(unitPriceBase * item.quantity)}</span>
                                         </div>
                                         ${item.addons_detail && item.addons_detail.length > 0 ?
-                            item.addons_detail.map(addon => `
+                                item.addons_detail.map(addon => `
                                                 <div style="display: flex; justify-content: space-between; font-size: 12px; color: #444; margin-left: 10px; margin-top: 2px;">
                                                     <span style="font-style: italic;">+ ${addon.name}</span>
                                                     <span style="font-style: italic;">${formatCurrency(addon.price * item.quantity)}</span>
                                                 </div>
                                             `).join('')
-                            : ''}
+                                : ''}
                                         ${cleanNotes ? `<div style="padding-left: 0px; font-size: 12px; margin-top: 2px; color: #000;"><p style="font-weight: normal; margin: 0; background: #eee; display: inline-block; padding: 2px 5px;">OBS: ${cleanNotes}</p></div>` : ''}
                                     </div>
                                 `;
-                }).join('') : '<p style="text-align:center; font-size: 14px;">(Sem itens para exibir)</p>'}
+                    }).join('') : '<p style="text-align:center; font-size: 14px;">(Sem itens para exibir)</p>'}
                         </div>
                         
                         <div style="border-bottom: 2px dashed #000; margin: 10px 0;"></div>
@@ -552,15 +579,24 @@
                 // ============================================================
                 // LÓGICA DE IMPRESSÃO: 2 VIAS PARA DELIVERY
                 // ============================================================
+                // ============================================================
+                // MARCAR NO BANCO ANTES DE IMPRIMIR (Previne race condition)
+                // ============================================================
+                await supabaseClient
+                    .from('orders')
+                    .update({ printed: true, printed_at: new Date().toISOString() })
+                    .eq('id', orderId);
+                console.log(`✅ [ANTI-LOOP] Pedido #${orderId} marcado como impresso NO BANCO antes de window.print()`);
+
                 if (order.type === 'delivery') {
                     // VIA 1: Estabelecimento
                     printArea.innerHTML = generateReceiptHTML(false);
                     await new Promise(resolve => setTimeout(resolve, 500));
                     window.print();
-                    
+
                     // Aguardar entre impressões
                     await new Promise(resolve => setTimeout(resolve, 2000));
-                    
+
                     // VIA 2: Motoboy (com destaques)
                     printArea.innerHTML = generateReceiptHTML(true);
                     await new Promise(resolve => setTimeout(resolve, 500));
@@ -572,14 +608,11 @@
                     window.print();
                 }
 
+                // Update final com contagem de tentativas (já marcamos printed=true antes)
                 await supabaseClient
                     .from('orders')
-                    .update({
-                        printed: true,
-                        printed_at: new Date().toISOString(),
-                        print_attempts: (order.print_attempts || 0) + 1
-                    })
-                    .eq('id', order.id);
+                    .update({ print_attempts: (order.print_attempts || 0) + 1 })
+                    .eq('id', orderId);
 
                 stats.totalPrinted++;
                 stats.sessionPrinted++;
@@ -591,6 +624,10 @@
                 console.error('Erro ao imprimir:', error);
                 addLog(formatOrderNumber(order.daily_number || order.id), order.customer_name || 'Balcão', '❌ Erro na impressão');
                 updateStatus('connected', 'Conectado - Erro na última impressão');
+
+                // ANTI-LOOP: Em caso de erro, remover do cache para permitir nova tentativa
+                printedIds.delete(orderId);
+                console.log(`🔄 [ANTI-LOOP] Pedido #${orderId} removido do cache devido a erro. Nova tentativa permitida.`);
             }
         }
 
@@ -626,9 +663,23 @@
                         schema: 'public',
                         table: 'orders'
                     }, (payload) => {
-                        console.log('Novo pedido recebido:', payload.new);
+                        const newOrder = payload.new;
+                        console.log('Novo pedido recebido:', newOrder);
+
+                        // ANTI-LOOP: Filtrar pedidos já impressos
+                        if (newOrder.printed === true) {
+                            console.log(`🔒 [ANTI-LOOP] INSERT ignorado: Pedido #${newOrder.id} já está marcado como impresso.`);
+                            return;
+                        }
+
+                        // ANTI-LOOP: Verificar cache local
+                        if (printedIds.has(newOrder.id)) {
+                            console.log(`🔒 [ANTI-LOOP] INSERT ignorado: Pedido #${newOrder.id} já está no cache local.`);
+                            return;
+                        }
+
                         // Pequeno delay para garantir que os itens foram inseridos
-                        setTimeout(() => printOrder(payload.new), 1000);
+                        setTimeout(() => printOrder(newOrder), 1000);
                     })
                     .on('postgres_changes', {
                         event: 'UPDATE',
@@ -637,7 +688,9 @@
                         filter: 'printed=eq.false'
                     }, (payload) => {
                         if (payload.new.printed === false && payload.old.printed === true) {
-                            console.log('Reimpressão solicitada:', payload.new);
+                            console.log('🔄 Reimpressão solicitada:', payload.new);
+                            // ANTI-LOOP: Remover do cache para permitir reimpressão
+                            printedIds.delete(payload.new.id);
                             printOrder(payload.new);
                         }
                     })
