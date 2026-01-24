@@ -641,7 +641,7 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
 
     } catch (e: any) {
       console.error("Exceção no checkout:", e);
-      alert(`Erro ao processar venda: ${e.message || JSON.stringify(e)}`);
+      toast.error(`Erro ao processar venda. Verifique sua conexão. ${e.message || ''}`);
     } finally {
       setIsProcessing(false);
     }
