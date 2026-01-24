@@ -296,6 +296,7 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
           .from('shifts')
           .insert({
             initial_float: floatAmount,
+            opening_balance: floatAmount, // Persistir saldo inicial explicitamente
             status: 'open',
             opened_at: new Date().toISOString(),
             opened_by: user.id,
@@ -435,9 +436,14 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
       return;
     }
 
+    const cashSales = shiftStats.cash || 0;
+    const finalBalance = (currentShift.initial_float || 0) + cashSales;
+
     const { error } = await supabase.from('shifts').update({
       status: 'closed',
-      closed_at: new Date().toISOString()
+      closed_at: new Date().toISOString(),
+      cash_sales_total: cashSales,
+      final_balance: finalBalance
     }).eq('id', currentShift.id);
 
     if (!error) {
@@ -1310,8 +1316,30 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
                 </div>
 
                 <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center border border-green-500/20">
-                  <span className="text-green-400 font-medium">💵 Dinheiro em Caixa</span>
+                  <span className="text-green-400 font-medium">💵 Total em Dinheiro</span>
                   <span className="text-green-400 font-bold">R$ {((currentShift?.initial_float || 0) + (shiftStats.cash || 0)).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* 📊 SUB-RELATÓRIO DE NUMERÁRIO (Novo) */}
+              <div className="bg-[#1C1C1E] rounded-2xl p-4 border border-white/10 space-y-2">
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">📊 Resumo de Numerário</h3>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Troco Inicial</span>
+                  <span className="text-white">R$ {(currentShift?.initial_float || 0).toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Vendas em Dinheiro (+)</span>
+                  <span className="text-green-400 font-medium">R$ {(shiftStats.cash || 0).toFixed(2)}</span>
+                </div>
+
+                <div className="h-px bg-white/10 my-1"></div>
+
+                <div className="flex justify-between text-base font-bold">
+                  <span className="text-white">Total na Gaveta (=)</span>
+                  <span className="text-[#FFCC00]">R$ {((currentShift?.initial_float || 0) + (shiftStats.cash || 0)).toFixed(2)}</span>
                 </div>
               </div>
 

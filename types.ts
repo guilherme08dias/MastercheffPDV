@@ -25,6 +25,10 @@ export interface Shift {
   closed_at?: string;
   initial_float: number;
   status: ShiftStatus;
+  // Campos Financeiros (Fechamento)
+  opening_balance?: number;
+  cash_sales_total?: number;
+  final_balance?: number;
 }
 
 export interface Product {
