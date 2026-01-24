@@ -3,9 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 // ATENÇÃO: Você precisa substituir estas chaves pelas do seu projeto Supabase
 // Vá em Project Settings -> API no seu painel do Supabase.
 
-// TODO: SEGURANÇA - Implementar Row Level Security (RLS) no console do Supabase
-// Tabelas que PRECISAM de RLS: 'orders', 'order_items', 'shifts', 'products', 'profiles'
-// Sem RLS, qualquer usuário com a anon_key pode manipular dados diretamente.
+// SEGURANÇA: Row Level Security (RLS) IMPLEMENTADO
+// Políticas ativas em: orders, order_items, shifts, products, delivery_areas, addons
+// SQL de políticas em: database/rls_policies.sql
 // Docs: https://supabase.com/docs/guides/auth/row-level-security
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';

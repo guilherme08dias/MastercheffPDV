@@ -386,9 +386,17 @@ export const Cardapio: React.FC = () => {
             setTimeout(() => {
                 window.location.href = whatsappUrl;
             }, 1000);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Erro ao enviar pedido:', error);
-            alert('Erro ao enviar. Tente novamente.');
+
+            // Tratamento específico para erros de RLS/permissão
+            if (error?.code === '42501' || error?.message?.includes('policy')) {
+                alert('Erro de permissão. O sistema pode estar em manutenção. Tente novamente em alguns minutos.');
+            } else if (error?.code === 'PGRST301') {
+                alert('Erro de conexão com o servidor. Verifique sua internet.');
+            } else {
+                alert('Erro ao enviar pedido. Tente novamente.');
+            }
         } finally {
             setSending(false);
         }
