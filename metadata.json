@@ -1,0 +1,5 @@
+{
+  "name": "XisMaster POS",
+  "description": "A mobile-first Point of Sale system for Food Trucks with shift management, product options, delivery calculation, and thermal printing support.",
+  "requestFramePermissions": []
+}

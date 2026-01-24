@@ -1,0 +1,9 @@
+import { createClient } from '@supabase/supabase-js';
+
+// ATENÇÃO: Você precisa substituir estas chaves pelas do seu projeto Supabase
+// Vá em Project Settings -> API no seu painel do Supabase.
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

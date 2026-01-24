@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🖨️ Servidor de Impressão - XisMaster</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.printing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .pulse {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .log {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .log-item {
+            padding: 10px;
+            border-left: 3px solid #667eea;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .log-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .log-order {
+            font-weight: bold;
+            color: #333;
+            margin: 5px 0;
+        }
+
+        .log-status {
+            font-size: 12px;
+            color: #28a745;
+        }
+
+        /* Área de impressão (invisível) */
+        #print-area {
+            display: none;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+
+            #print-area,
+            #print-area * {
+                visibility: visible;
+            }
+
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                display: block;
+            }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>
+            <span>🖨️</span>
+            Servidor de Impressão Ativo
+        </h1>
+        <p style="color: #666; margin-bottom: 20px;">Aguardando pedidos do sistema XisMaster...</p>
+
+        <div id="status" class="status disconnected">
+            <div class="pulse"></div>
+            <span>Conectando ao Supabase...</span>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="total-printed">0</div>
+                <div class="stat-label">Pedidos Impressos</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="session-printed">0</div>
+                <div class="stat-label">Nesta Sessão</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="last-print-time">--:--</div>
+                <div class="stat-label">Última Impressão</div>
+            </div>
+        </div>
+
+        <h3 style="margin: 20px 0 10px 0; color: #333;">📋 Log de Impressões</h3>
+        <div class="log" id="log">
+            <p style="color: #999; text-align: center;">Nenhuma impressão ainda...</p>
+        </div>
+
+        <div class="footer">
+            <p>XisMaster POS - Print Server v1.0</p>
+            <p style="font-size: 12px; margin-top: 5px;">Mantenha esta página sempre aberta</p>
+        </div>
+        };
+
+        // Elementos do DOM
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        const printArea = document.getElementById('print-area');
+
+        // Atualizar status visual
+        function updateStatus(status, message) {
+        statusEl.className = `status ${status}`;
+        statusEl.innerHTML = `<div class="pulse"></div><span>${message}</span>`;
+        }
+
+        // Adicionar log
+        function addLog(orderNumber, customerName, status) {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('pt-BR');
+
+        if (logEl.querySelector('p')) {
+        logEl.innerHTML = '';
+        }
+
+        const logItem = document.createElement('div');
+        logItem.className = 'log-item';
+        logItem.innerHTML = `
+        <div class="log-time">${timeStr}</div>
+        <div class="log-order">Pedido #${orderNumber} - ${customerName}</div>
+        <div class="log-status">${status}</div>
+        `;
+
+        logEl.insertBefore(logItem, logEl.firstChild);
+
+        // Manter apenas últimos 10 logs
+        while (logEl.children.length > 10) {
+        logEl.removeChild(logEl.lastChild);
+        }
+        }
+
+        // Atualizar estatísticas
+        function updateStats() {
+        document.getElementById('total-printed').textContent = stats.totalPrinted;
+        document.getElementById('session-printed').textContent = stats.sessionPrinted;
+        document.getElementById('last-print-time').textContent = new Date().toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit'
+        });
+        }
+
+        // Formatar número do pedido (evitar 13)
+        function formatOrderNumber(num) {
+        if (num === 13) return '12+1';
+        return num.toString();
+        }
+
+        // Renderizar recibo
+        function renderReceipt(order, items, neighborhoodName) {
+        const formatCurrency = (value) => `R$ ${value.toFixed(2)}`;
+        const subtotal = items.reduce((acc, item) => acc + (item.unit_price * item.quantity), 0);
+
+        return `
+        <div style="width: 72mm; margin: 0 auto; font-family: sans-serif; padding: 10px;">
+            <div style="text-center;">
+                <h2 style="font-size: 14px; font-weight: bold; text-transform: uppercase; margin: 0;">MASTERCHEFF</h2>
+                <p style="font-size: 10px; color: #666; margin: 5px 0;">Food Truck</p>
+            </div>
+
+            <div style="border-bottom: 2px dashed #000; margin: 15px 0;"></div>
+
+            <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                <div>
+                    <span style="font-size: 10px;">Pedido:</span>
+                    <h1 style="font-size: 32px; font-weight: 900; margin: 0; line-height: 1;">
+                        #${formatOrderNumber(order.daily_number || order.id)}</h1>
+                </div>
+                <div style="text-align: right;">
+                    <span
+                        style="font-size: 10px; font-weight: bold; background: #000; color: #fff; padding: 5px 10px; border-radius: 3px;">
+                        ${order.type === 'delivery' ? 'ENTREGA' : order.type === 'takeaway' ? 'RETIRADA' : 'LOCAL'}
+                    </span>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <p
+                    style="font-size: 16px; font-weight: bold; text-transform: uppercase; margin: 0; word-wrap: break-word;">
+                    ${order.customer_name || 'Balcão'}</p>
+                ${order.type === 'delivery' && neighborhoodName ? `<p style="font-size: 12px; margin: 5px 0;">Bairro:
+                    ${neighborhoodName}</p>` : ''}
+            </div>
+
+            <div style="border-bottom: 1px dashed #000; margin: 10px 0;"></div>
+
+            <div style="margin: 15px 0;">
+                ${items.map(item => `
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 12px;">
+                        <div style="display: flex; gap: 10px; flex: 1;">
+                            <span>${item.quantity}x</span>
+                            <span style="text-transform: uppercase; word-wrap: break-word;">${item.product_name}</span>
+                        </div>
+                        <span style="white-space: nowrap; margin-left: 10px;">${formatCurrency(item.unit_price *
+                            item.quantity)}</span>
+                    </div>
+                    ${item.notes ? `
+                    <div style="padding-left: 30px; font-size: 10px; margin-top: 5px;">
+                        <p style="font-weight: bold; text-transform: uppercase; margin: 0;">** ${item.notes} **</p>
+                    </div>
+                    ` : ''}
+                </div>
+                `).join('')}
+            </div>
+
+            <div style="border-bottom: 2px dashed #000; margin: 15px 0;"></div>
+
+            <div style="font-size: 12px; margin: 10px 0;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Subtotal</span>
+                    <span>${formatCurrency(subtotal)}</span>
+                </div>
+                ${order.delivery_fee_snapshot > 0 ? `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Taxa de Entrega</span>
+                    <span>${formatCurrency(order.delivery_fee_snapshot)}</span>
+                </div>
+                ` : ''}
+                <div
+                    style="display: flex; justify-content: space-between; font-size: 18px; font-weight: 900; margin-top: 10px;">
+                    <span>TOTAL</span>
+                    <span>${formatCurrency(order.total)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 10px; margin-top: 5px;">
+                    <span>Pagamento:</span>
+                    <span style="font-weight: bold; text-transform: uppercase;">
+                        ${order.payment_method === 'cash' ? 'Dinheiro' :
+                        order.payment_method === 'credit' ? 'Crédito' :
+                        order.payment_method === 'debit' ? 'Débito' : 'PIX'}
+                    </span>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; text-align: center; border-top: 1px dashed #000; padding-top: 10px;">
+                <p style="font-size: 10px; font-weight: bold; margin: 0;">Obrigado pela preferência!</p>
+                <p style="font-size: 8px; margin: 5px 0;">${new Date().toLocaleString('pt-BR')}</p>
+            </div>
+
+            <div style="height: 30mm;"></div>
+        </div>
+        `;
+        }
+
+        // Imprimir pedido
+        async function printOrder(order) {
+        try {
+        updateStatus('printing', `Imprimindo pedido #${formatOrderNumber(order.daily_number || order.id)}...`);
+
+        // Buscar itens do pedido
+        const { data: items, error: itemsError } = await supabase
+        .from('order_items')
+        .select('*, product:products(name)')
+        .eq('order_id', order.id);
+
+        if (itemsError) throw itemsError;
+
+        // Formatar itens
+        const formattedItems = items.map(item => ({
+        ...item,
+        product_name: item.product?.name || 'Produto'
+        }));
+
+        // Buscar nome do bairro se for delivery
+        let neighborhoodName = '';
+        if (order.type === 'delivery' && order.neighborhood_id) {
+        const { data: neighborhood } = await supabase
+        .from('neighborhoods')
+        .select('name')
+        .eq('id', order.neighborhood_id)
+        .single();
+
+        neighborhoodName = neighborhood?.name || '';
+        }
+
+        // Renderizar recibo
+        printArea.innerHTML = renderReceipt(order, formattedItems, neighborhoodName);
+
+        // Aguardar renderização
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Imprimir
+        window.print();
+
+        // Marcar como impresso
+        const { error: updateError } = await supabase
+        .from('orders')
+        .update({
+        printed: true,
+        printed_at: new Date().toISOString(),
+        print_attempts: (order.print_attempts || 0) + 1
+        })
+        .eq('id', order.id);
+
+        if (updateError) throw updateError;
+
+        // Atualizar estatísticas
+        stats.totalPrinted++;
+        stats.sessionPrinted++;
+        updateStats();
+
+        // Adicionar log
+        addLog(
+        formatOrderNumber(order.daily_number || order.id),
+        order.customer_name || 'Balcão',
+        '✅ Impresso com sucesso'
+        );
+
+        updateStatus('connected', 'Conectado - Aguardando pedidos...');
+
+        } catch (error) {
+        console.error('Erro ao imprimir:', error);
+        addLog(
+        formatOrderNumber(order.daily_number || order.id),
+        order.customer_name || 'Balcão',
+        '❌ Erro na impressão'
+        );
+        updateStatus('connected', 'Conectado - Erro na última impressão');
+        }
+        }
+
+        // Buscar pedidos não impressos (ao iniciar)
+        async function checkPendingOrders() {
+        try {
+        const { data: pendingOrders, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('printed', false)
+        .order('created_at', { ascending: true })
+        .limit(10);
+
+        if (error) throw error;
+
+        if (pendingOrders && pendingOrders.length > 0) {
+        console.log(`Encontrados ${pendingOrders.length} pedidos pendentes. Imprimindo...`);
+        for (const order of pendingOrders) {
+        await printOrder(order);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2s entre impressões
+        }
+        }
+        } catch (error) {
+        console.error('Erro ao buscar pedidos pendentes:', error);
+        }
+        }
+
+        // Inicializar
+        async function init() {
+        try {
+        // Testar conexão
+        const { data, error } = await supabase.from('orders').select('count').limit(1);
+
+        if (error) throw error;
+
+        updateStatus('connected', 'Conectado - Aguardando pedidos...');
+
+        // Buscar pedidos pendentes
+        await checkPendingOrders();
+
+        // Inscrever-se em novos pedidos
+        const channel = supabase
+        .channel('orders-channel')
+        .on(
+        'postgres_changes',
+        {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'orders'
+        },
+        (payload) => {
+        console.log('Novo pedido recebido:', payload.new);
+        printOrder(payload.new);
+        }
+        )
+        .on(
+        'postgres_changes',
+        {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'orders',
+        filter: 'printed=eq.false'
+        },
+        (payload) => {
+        // Reimpressão (quando printed volta para false)
+        if (payload.new.printed === false && payload.old.printed === true) {
+        console.log('Reimpressão solicitada:', payload.new);
+        printOrder(payload.new);
+        }
+        }
+        )
+        .subscribe((status) => {
+        console.log('Status da inscrição:', status);
+        if (status === 'SUBSCRIBED') {
+        console.log('✅ Inscrito no canal de pedidos');
+        }
+        });
+
+        // Reconexão automática
+        window.addEventListener('online', () => {
+        console.log('Internet restaurada. Reconectando...');
+        updateStatus('connected', 'Reconectado - Aguardando pedidos...');
+        checkPendingOrders();
+        });
+
+        window.addEventListener('offline', () => {
+        console.log('Internet perdida.');
+        updateStatus('disconnected', 'Sem conexão com a internet');
+        });
+
+        } catch (error) {
+        console.error('Erro ao inicializar:', error);
+        updateStatus('disconnected', 'Erro ao conectar no Supabase');
+        }
+        }
+
+        // Iniciar quando a página carregar
+        window.addEventListener('load', init);
+        </script>
+</body>
+
+</html>

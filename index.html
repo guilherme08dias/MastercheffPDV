@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MasterCheff - Sistema de Pedidos</title>
+  <meta name="description" content="Sistema de gestão de pedidos MasterCheff Chapecó" />
+  <style>
+    @media print {
+      @page {
+        margin: 0;
+        size: auto;
+      }
+
+      body,
+      html {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: white;
+      }
+
+      /* Esconde tudo exceto o recibo */
+      body * {
+        visibility: hidden;
+      }
+
+      .print-receipt,
+      .print-receipt * {
+        visibility: visible;
+      }
+
+      .print-receipt {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 72mm;
+        margin: 0 auto;
+        font-family: 'Courier New', Courier, monospace;
+        color: #000000;
+        background: white;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+    }
+
+    /* Custom Scrollbar for Dark Mode */
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #000000;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #2C2C2E;
+      border-radius: 5px;
+      border: 2px solid #000000;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #38383A;
+    }
+  </style>
+</head>
+
+<body class="bg-black text-white antialiased transition-colors">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>
