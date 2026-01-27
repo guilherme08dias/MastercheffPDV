@@ -6,7 +6,7 @@ import { ProductModal } from './ProductModal';
 import { CartSidebar } from './CartSidebar';
 import { ShiftOrdersSidebar } from './ShiftOrdersSidebar';
 import { OrderHistoryModal } from './OrderHistoryModal';
-import { ShoppingCart, LogOut, ArrowLeft, History, Sun, Moon, Check } from 'lucide-react';
+import { ShoppingCart, LogOut, ArrowLeft, History, Sun, Moon, Check, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getBrasiliaDateFormatted } from '../utils/dateUtils';
 import { POSNavigation } from './POSNavigation';
@@ -206,6 +206,25 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
       console.warn("DEBUG: No addons fetched or error", aRes.error);
       // Alert to show user the exact error
       if (aRes.error) alert(`Erro ao carregar adicionais: ${aRes.error.message || JSON.stringify(aRes.error)}`);
+    }
+  };
+
+  const handleClearPrintQueue = async () => {
+    if (!window.confirm("⚠️ Zerar Fila de Impressão?\n\nIsso marcará TODOS os pedidos pendentes como 'Impressos'. Útil se a impressora travar ou entrar em loop.")) {
+      return;
+    }
+
+    const toastId = toast.loading("Zerando fila...");
+    try {
+      const { error } = await supabase.rpc('clear_print_queue');
+      if (error) throw error;
+
+      toast.success("✅ Fila de impressão limpa!", { id: toastId });
+      // Clear local lock just in case
+      setPrintedOrderIds(new Set());
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao zerar fila. Verifique permissões.", { id: toastId });
     }
   };
 
@@ -1059,6 +1078,13 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
                 <History size={16} />
               </button>
               <button
+                onClick={handleClearPrintQueue}
+                className="w-9 h-9 bg-red-500/10 rounded-full flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-red-500/20"
+                title="Zerar Fila de Impressão"
+              >
+                <AlertTriangle size={16} />
+              </button>
+              <button
                 onClick={async () => {
                   if (confirm("Deseja realmente sair?")) {
                     await supabase.auth.signOut();
@@ -1095,6 +1121,15 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
                 <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Caixa Aberto</span>
               </div>
             </div>
+            {/* Kill Switch Desktop */}
+            <button
+              onClick={handleClearPrintQueue}
+              className="ml-4 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all"
+              title="Emergência: Zerar Fila"
+            >
+              <AlertTriangle size={12} />
+              Zerar Fila
+            </button>
           </div>
 
           {/* Barra de Pesquisa Centralizada */}

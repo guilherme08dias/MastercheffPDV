@@ -6,14 +6,21 @@ import toast from 'react-hot-toast';
 interface ShiftOrdersSidebarProps {
     shiftId: string;
     onEditOrder: (order: any) => void;
+    onClose?: () => void; // New optional prop
 }
 
-export const ShiftOrdersSidebar: React.FC<ShiftOrdersSidebarProps> = ({ shiftId, onEditOrder }) => {
+export const ShiftOrdersSidebar: React.FC<ShiftOrdersSidebarProps> = ({ shiftId, onEditOrder, onClose }) => {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    // PRINT LOCK: Prevent rapid reprints (3 second cooldown per order)
+    // ... (rest of state/refs)
+
+    // ... (fetchOrders function)
+    // (omitted for brevity, keep existing code)
+
+    // ... (useEffect and handlers)
+    // (omitted for brevity, keep existing code)
     const lastPrintTimeRef = useRef<Map<string, number>>(new Map());
 
     const fetchOrders = async () => {
@@ -100,52 +107,26 @@ export const ShiftOrdersSidebar: React.FC<ShiftOrdersSidebarProps> = ({ shiftId,
             return;
         }
 
-        // Record print time
+        // RECORD PRINT TIME
         lastPrintTimeRef.current.set(orderId, now);
-        console.log('🖨️ Reimprimindo pedido:', orderId);
+        console.log('🖨️ Solicitando reimpressão no servidor:', orderId);
 
         try {
-            // If order_items not loaded, fetch them
-            let orderWithItems = order;
-            if (!order.order_items || order.order_items.length === 0) {
-                const { data, error } = await supabase
-                    .from('orders')
-                    .select('*, order_items(*)')
-                    .eq('id', order.id)
-                    .single();
+            // RESET PRINT STATUS TO FALSE
+            const { error } = await supabase
+                .from('orders')
+                .update({
+                    printed: false,
+                    print_attempts: 0
+                })
+                .eq('id', orderId);
 
-                if (error) throw error;
-                orderWithItems = data;
-            }
+            if (error) throw error;
 
-            // Trigger print (reusing POS print logic)
-            const printContent = `
-                <div style="font-family: monospace; width: 300px; margin: 0 auto;">
-                    <h2 style="text-align: center;">MASTERCHEFF</h2>
-                    <p style="text-align: center;">Pedido #${order.daily_number || order.id}</p>
-                    <hr>
-                    <p><strong>Cliente:</strong> ${order.customer_name || 'Consumidor'}</p>
-                    <p><strong>Tipo:</strong> ${order.type === 'delivery' ? 'Entrega' : 'Retirada'}</p>
-                    <p><strong>Pagamento:</strong> ${order.payment_method || 'N/A'}</p>
-                    <hr>
-                    <h3>Itens:</h3>
-                    ${orderWithItems.order_items?.map((item: any) => `
-                        <p>${item.quantity}x - ${item.notes || 'Item'} - R$ ${((item.unit_price || 0) * item.quantity).toFixed(2)}</p>
-                    `).join('') || '<p>Sem itens</p>'}
-                    <hr>
-                    <p style="text-align: right;"><strong>TOTAL: R$ ${(order.total || 0).toFixed(2)}</strong></p>
-                </div>
-            `;
+            toast.success(`Pedido #${order.daily_number || order.id} enviado para a fila de impressão!`);
 
-            const printWindow = window.open('', '_blank');
-            if (printWindow) {
-                printWindow.document.write(printContent);
-                printWindow.document.close();
-                printWindow.print();
-                toast.success(`Pedido #${order.daily_number || order.id} enviado para impressão`);
-            }
         } catch (e) {
-            toast.error('Erro ao reimprimir');
+            toast.error('Erro ao solicitar reimpressão');
             console.error(e);
         }
     };
@@ -170,18 +151,30 @@ export const ShiftOrdersSidebar: React.FC<ShiftOrdersSidebarProps> = ({ shiftId,
                     <Clock size={18} className="text-[#FFCC00]" />
                     {shiftId ? 'Pedidos do Turno' : 'Últimas 24h'}
                 </h2>
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400 bg-white/5 px-2 py-1 rounded-full">
+                <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400 bg-white/5 px-2 py-1 rounded-full h-8 flex items-center">
                         {orders.length}
                     </span>
+
                     <button
                         onClick={handleManualRefresh}
                         disabled={refreshing}
-                        className="p-1.5 text-gray-400 hover:text-[#FFCC00] hover:bg-white/5 rounded-lg transition-colors disabled:opacity-50"
+                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-[#FFCC00] bg-white/5 hover:bg-white/10 rounded-full transition-colors disabled:opacity-50"
                         title="Atualizar"
                     >
                         <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                     </button>
+
+                    {onClose && (
+                        <button
+                            onClick={onClose}
+                            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors"
+                            title="Fechar"
+                        >
+                            <span className="sr-only">Fechar</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                        </button>
+                    )}
                 </div>
             </div>
 

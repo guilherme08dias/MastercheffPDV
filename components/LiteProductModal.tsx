@@ -7,7 +7,13 @@ interface LiteProductModalProps {
     isOpen: boolean;
     onClose: () => void;
     onAddToCart: (item: CartItem) => void;
-    availableTags: Tag[]; // We might use this for reference, but main logic uses description
+    initialValues?: {
+        quantity: number;
+        notes: string;
+        tags: string[];
+    };
+    mode?: 'add' | 'edit';
+    onRemove?: () => void;
 }
 
 export const LiteProductModal: React.FC<LiteProductModalProps> = ({
@@ -15,7 +21,10 @@ export const LiteProductModal: React.FC<LiteProductModalProps> = ({
     isOpen,
     onClose,
     onAddToCart,
-    availableTags
+    availableTags,
+    initialValues,
+    mode = 'add',
+    onRemove
 }) => {
     const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set()); // Tags marked for REMOVAL
     const [customNotes, setCustomNotes] = useState('');
@@ -24,12 +33,20 @@ export const LiteProductModal: React.FC<LiteProductModalProps> = ({
 
     useEffect(() => {
         if (isOpen) {
-            setSelectedTags(new Set());
-            setCustomNotes('');
-            setQuantity(1);
+            if (initialValues) {
+                // Load existing data for editing
+                setSelectedTags(new Set(initialValues.tags));
+                setCustomNotes(initialValues.notes || '');
+                setQuantity(initialValues.quantity || 1);
+            } else {
+                // Reset for new item
+                setSelectedTags(new Set());
+                setCustomNotes('');
+                setQuantity(1);
+            }
             setIsIngredientsOpen(false);
         }
-    }, [isOpen]);
+    }, [isOpen, initialValues]);
 
     if (!isOpen || !product) return null;
 
@@ -74,7 +91,7 @@ export const LiteProductModal: React.FC<LiteProductModalProps> = ({
     const totalPrice = product.price * quantity;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center bg-black/60 backdrop-blur-xl transition-all">
+        <div className="fixed inset-0 z-[170] flex items-end justify-center sm:items-center bg-black/60 backdrop-blur-xl transition-all">
             <div className="bg-[#1C1C1E] w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 border-t border-white/10 shadow-2xl flex flex-col max-h-[90vh] animate-slide-up sm:animate-scale-in">
 
                 {/* Header */}
@@ -95,7 +112,7 @@ export const LiteProductModal: React.FC<LiteProductModalProps> = ({
                 <div className="overflow-y-auto flex-1 mb-6 space-y-6 scrollbar-hide">
 
                     {/* Ingredients Dropdown */}
-                    {ingredients.length > 0 && (
+                    {ingredients.length > 0 && product.category !== 'porcoes' && (
                         <div>
                             <div
                                 onClick={() => setIsIngredientsOpen(!isIngredientsOpen)}
@@ -190,16 +207,27 @@ export const LiteProductModal: React.FC<LiteProductModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Add Button */}
-                    <button
-                        onClick={handleAdd}
-                        className="w-full py-4 bg-[#FFCC00] text-black font-bold text-lg rounded-2xl shadow-xl shadow-orange-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                        Adicionar a Sacola
-                        <span className="bg-black/10 px-2 py-0.5 rounded text-sm font-black">
-                            R$ {totalPrice.toFixed(2)}
-                        </span>
-                    </button>
+                    {/* Add/Save Button */}
+                    <div className="flex gap-3">
+                        {mode === 'edit' && onRemove && (
+                            <button
+                                onClick={onRemove}
+                                className="p-4 bg-red-500/10 text-red-500 rounded-2xl hover:bg-red-500/20 active:scale-95 transition-all border border-red-500/20"
+                                title="Remover item da sacola"
+                            >
+                                <Trash2 size={24} />
+                            </button>
+                        )}
+                        <button
+                            onClick={handleAdd}
+                            className="flex-1 py-4 bg-[#FFCC00] text-black font-bold text-lg rounded-2xl shadow-xl shadow-orange-500/10 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                            {mode === 'edit' ? 'Salvar Alterações' : 'Adicionar a Sacola'}
+                            <span className="bg-black/10 px-2 py-0.5 rounded text-sm font-black">
+                                R$ {totalPrice.toFixed(2)}
+                            </span>
+                        </button>
+                    </div>
                 </div>
 
             </div>

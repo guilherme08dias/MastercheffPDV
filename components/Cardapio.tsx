@@ -1,9 +1,10 @@
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Product, Addon, CartItem, Tag } from '../types';
 import { ProductCard } from './ProductCard';
 import { LiteProductModal } from './LiteProductModal';
-import { ShoppingCart, Search, Info, MapPin, Phone, Lock, Clock, Check, X, Trash2, Send, User, LayoutGrid, Flame, Utensils, Wine, GlassWater, Box, ShoppingBag, Beef } from 'lucide-react';
+import { Share2, ShoppingCart, Search, X, Check, Trash2, ArrowRight, LayoutGrid, Clock, MapPin, Send, Phone, Utensils, Wine, ShoppingBag, Pencil, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const Cardapio: React.FC = () => {
@@ -51,6 +52,8 @@ export const Cardapio: React.FC = () => {
     // Toast de Feedback
     const [showToast, setShowToast] = useState(false);
 
+    const [editingCartItemIndex, setEditingCartItemIndex] = useState<number | null>(null);
+
     // Estado do Turno (Shift)
     const [activeShift, setActiveShift] = useState<any>(null);
     const [isStoreOpen, setIsStoreOpen] = useState(false);
@@ -58,7 +61,6 @@ export const Cardapio: React.FC = () => {
     // Estado de Áreas de Entrega
     const [deliveryAreas, setDeliveryAreas] = useState<any[]>([]);
     const [selectedNeighborhoodId, setSelectedNeighborhoodId] = useState<string>('');
-    const [deliveryFee, setDeliveryFee] = useState<number>(0);
 
     // Estado do Floating Cart e Header (Scroll)
     const [showFloatingCart, setShowFloatingCart] = useState(false);
@@ -183,21 +185,49 @@ export const Cardapio: React.FC = () => {
             alert('A loja está fechada no momento! Aguarde a abertura do caixa.');
             return;
         }
-        setCart([...cart, item]);
+        if (editingCartItemIndex !== null) {
+            // EDIT MODE: Update existing item
+            const newCart = [...cart];
+            newCart[editingCartItemIndex] = { ...item, tempId: cart[editingCartItemIndex].tempId };
+            setCart(newCart);
+            setEditingCartItemIndex(null);
+
+            // Re-open checkout/cart if we were there? (Optional, usually we stay where we were)
+            // If editing from "Checkout" modal (Review), we probably should reopen Checkout?
+            // But Checkout is separate from Product Modal.
+
+            // If editing from "Cart Drawer", ensure drawer stays open (it does by default unless we close it)
+        } else {
+            // ADD MODE: Push new item
+            setCart([...cart, item]);
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 2000);
+        }
         setIsModalOpen(false);
         setSelectedProduct(null);
+    };
 
-        // Mostrar toast de sucesso
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 2000);
+    const handleEditCartItem = (item: CartItem, index: number) => {
+        setSelectedProduct(item.product);
+        setEditingCartItemIndex(index);
+        setIsModalOpen(true);
+        // Note: LiteProductModal will read initialValues based on editingCartItemIndex/logic we add next
     };
 
     const removeFromCart = (tempId: string) => {
         setCart(cart.filter(item => item.tempId !== tempId));
     };
 
-    // Cálculo do total (SEM ADICIONAIS na versão clean)
-    const getCartTotal = () => cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+    // Cálculo do total (INCLUINDO ADICIONAIS)
+    const getCartTotal = () => cart.reduce((sum, item) => {
+        const addonsTotal = item.addons?.reduce((acc, addon) => acc + addon.price, 0) || 0;
+        return sum + ((item.product.price + addonsTotal) * item.quantity);
+    }, 0);
+
+    // Calcular taxa de entrega atual (Derived State)
+    const currentDeliveryFee = orderType === 'delivery'
+        ? (deliveryAreas.find(da => String(da.id) === String(selectedNeighborhoodId))?.fee || 0)
+        : 0;
 
     // Função para remover TODOS os acentos e caracteres especiais
     const removeAccents = (str: string): string => {
@@ -219,22 +249,29 @@ export const Cardapio: React.FC = () => {
     };
 
     const formatPhone = (value: string) => {
-        // Remove tudo que não é dígito
-        const numbers = value.replace(/\D/g, '');
+        // Remove tudo que não é dígito e limita a 11 caracteres
+        const numbers = value.replace(/\D/g, '').slice(0, 11);
 
-        // Limita a 11 dígitos (DDD + 9 dígitos)
-        const limited = numbers.slice(0, 11);
+        // Retorna vazio se não tiver números
+        if (!numbers) return '';
 
-        // Máscara
-        if (limited.length <= 2) return limited;
-        if (limited.length <= 7) return `(${limited.slice(0, 2)}) ${limited.slice(2)}`;
+        // Máscara Dinâmica
+        if (numbers.length <= 2) return `(${numbers}`;
+        if (numbers.length <= 6) return `(${numbers.slice(0, 2)}) ${numbers.slice(2)}`;
 
-        // Formato (XX) 9XXXX-XXXX
-        return `(${limited.slice(0, 2)}) ${limited.slice(2, 7)}-${limited.slice(7)}`;
+        // 10 dígitos: (XX) XXXX-XXXX
+        if (numbers.length <= 10) {
+            return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 6)}-${numbers.slice(6)}`;
+        }
+
+        // 11 dígitos: (XX) XXXXX-XXXX
+        return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7)}`;
     };
 
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setCustomerPhone(formatPhone(e.target.value));
+        // Armazena apenas números no estado
+        const rawValue = e.target.value.replace(/\D/g, '').slice(0, 11);
+        setCustomerPhone(rawValue);
     };
 
 
@@ -257,7 +294,7 @@ export const Cardapio: React.FC = () => {
         }
 
         // Validação básica
-        if (!customerName.trim() || customerPhone.replace(/\D/g, '').length < 10) {
+        if (!customerName.trim() || customerPhone.length < 10) {
             alert('Preencha seu nome e um telefone válido (mínimo 10 dígitos).');
             return;
         }
@@ -279,70 +316,53 @@ export const Cardapio: React.FC = () => {
         setSending(true);
         try {
             // Montar endereço completo (incluindo complemento se apartamento)
-            const neighborhoodName = deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.name || '';
-            const complementText = addressType === 'apartment' && addressComplement.trim() ? ` - ${addressComplement}` : '';
+            const neighborhoodName = deliveryAreas.find(da => String(da.id) === String(selectedNeighborhoodId))?.name || '';
+            const complementText = addressType === 'apartment' && addressComplement.trim() ? ` - ${addressComplement} ` : '';
             const fullAddress = orderType === 'delivery'
-                ? `${address}, ${addressNumber}${complementText} - ${neighborhoodName}`
+                ? `${address}, ${addressNumber}${complementText} - ${neighborhoodName} `
                 : '';
 
-            // CALCULAR NÚMERO DO PEDIDO NO TURNO
-            const { data: maxOrder } = await supabase
-                .from('orders')
-                .select('daily_number')
-                .eq('shift_id', currentShiftCheck.id)
-                .order('daily_number', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            const nextNumber = (maxOrder?.daily_number || 0) + 1;
-
             const deliveryFee = orderType === 'delivery'
-                ? (deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.fee || 0)
+                ? (deliveryAreas.find(da => String(da.id) === String(selectedNeighborhoodId))?.fee || 0)
                 : 0;
 
-            const { data: order, error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                    shift_id: currentShiftCheck.id,
-                    customer_name: customerName.trim(),
-                    customer_phone: customerPhone.replace(/\D/g, ''),
-                    type: orderType === 'delivery' ? 'delivery' : 'takeaway',
-                    payment_method: paymentMethod === 'card' ? 'credit' : paymentMethod,
-                    total: getCartTotal() + deliveryFee,
-                    status: 'pending',
-                    origin: 'web',
-                    delivery_fee_snapshot: deliveryFee,
-                    daily_number: nextNumber,
-                    neighborhood_id: orderType === 'delivery' ? selectedNeighborhoodId : null,
-                    address_street: orderType === 'delivery' ? address : null,
-                    address_number: orderType === 'delivery' ? addressNumber : null,
-                    address_complement: orderType === 'delivery' && addressType === 'apartment' ? addressComplement : null
-                })
-                .select()
-                .single();
+            // NEW: Use Secure RPC to create order (Avoids RLS Public Insert issues)
+            const payload = {
+                p_customer_name: customerName.trim(),
+                p_customer_phone: customerPhone,
+                p_order_type: orderType === 'delivery' ? 'delivery' : 'takeaway',
+                p_neighborhood_id: orderType === 'delivery' ? selectedNeighborhoodId : null,
+                p_delivery_fee: deliveryFee,
+                p_payment_method: paymentMethod === 'card' ? 'credit' : paymentMethod,
+                p_items: cart.map(item => ({
+                    product_id: item.product.id,
+                    quantity: item.quantity,
+                    unit_price: item.product.price + (item.addons?.reduce((a, addon) => a + addon.price, 0) || 0),
+                    notes: [
+                        item.notes,
+                        item.addons?.map(a => a.name).join(', '),
+                        orderType === 'delivery' ? `📍 ${fullAddress} ` : '🏪 Retirada',
+                        paymentMethod === 'cash' && changeFor ? `💵 Troco p/ R$ ${changeFor} ` : ''
+                    ].filter(Boolean).join(' | ')
+                })),
+                p_address_street: orderType === 'delivery' ? address : null,
+                p_address_number: orderType === 'delivery' ? addressNumber : null,
+                p_address_complement: orderType === 'delivery' && addressType === 'apartment' ? addressComplement : null
+            };
+
+            const { data: orderData, error: orderError } = await supabase.rpc('create_web_order', payload);
 
             if (orderError) throw orderError;
 
-            const orderItems = cart.map(item => ({
-                order_id: order.id,
-                product_id: item.product.id,
-                quantity: item.quantity,
-                unit_price: item.product.price + (item.addons?.reduce((a, addon) => a + addon.price, 0) || 0),
-                notes: [
-                    item.notes,
-                    item.addons?.map(a => a.name).join(', '),
-                    orderType === 'delivery' ? `📍 ${fullAddress} ` : '🏪 Retirada',
-                    paymentMethod === 'cash' && changeFor ? `💵 Troco p / R$ ${changeFor} ` : ''
-                ].filter(Boolean).join(' | ')
-            }));
-
-            await supabase.from('order_items').insert(orderItems);
+            // RPC returns the full order object or at least ID and Number
+            const orderId = orderData.id;
+            const orderNumber = orderData.daily_number;
 
             setOrderSent(true);
             setCart([]);
 
             // GATILHO WHATSAPP: Mensagem Simplificada (SEM ADICIONAIS)
-            const whatsappNeighborhoodName = deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.name || '';
+            const whatsappNeighborhoodName = deliveryAreas.find(da => String(da.id) === String(selectedNeighborhoodId))?.name || '';
 
             // Formatar itens SEM mostrar adicionais (mas total inclui)
             const itemsDetailed = cart.map(item => {
@@ -363,7 +383,7 @@ export const Cardapio: React.FC = () => {
             const cleanNeighborhood = sanitizeText(whatsappNeighborhoodName);
             const cleanCustomerName = sanitizeText(customerName);
 
-            let message = `* PEDIDO PELO CARDAPIO ONLINE! *\n\n`;
+            let message = `* PEDIDO ${orderNumber ? `#${orderNumber}` : 'ONLINE'}! *\n\n`;
             message += `* CLIENTE:* ${cleanCustomerName} \n`;
             message += `* TELEFONE:* ${customerPhone} \n`;
             message += `-----------------------------------\n`;
@@ -436,20 +456,9 @@ export const Cardapio: React.FC = () => {
                     </div>
                     <h1 className="text-3xl font-bold text-white mb-2">Pedido Recebido! 🎉</h1>
                     <p className="text-gray-400 mb-8 text-lg">
-                        Obrigado, <strong className="text-white">{customerName}</strong>! Já estamos preparando tudo com carinho.
+                        🚀 Pedido recebido! Agora é com a gente. Prepare o apetite, seu Mastercheff já está sendo preparado!
                     </p>
-                    <button
-                        onClick={() => {
-                            setOrderSent(false);
-                            setShowCheckout(false);
-                            setShowCart(false);
-                            setCustomerName('');
-                            setCustomerPhone('');
-                        }}
-                        className="w-full py-4 bg-[#FFCC00] text-black font-bold text-xl rounded-2xl hover:bg-[#E5B800] transition-all shadow-lg shadow-orange-500/20 active:scale-95"
-                    >
-                        Fazer Novo Pedido
-                    </button>
+
                 </div>
             </div>
         );
@@ -526,7 +535,7 @@ export const Cardapio: React.FC = () => {
                         )}
                     </div>
                 ) : (
-                    <motion.div layout className="grid grid-cols-1 gap-3">
+                    <motion.div className="grid grid-cols-1 gap-3">
                         <AnimatePresence mode="popLayout">
                             {filteredProducts.map(product => (
                                 <motion.div
@@ -561,6 +570,20 @@ export const Cardapio: React.FC = () => {
                 }}
                 onAddToCart={addToCart}
                 availableTags={tags}
+                mode={editingCartItemIndex !== null ? 'edit' : 'add'}
+                initialValues={editingCartItemIndex !== null ? {
+                    quantity: cart[editingCartItemIndex].quantity,
+                    notes: cart[editingCartItemIndex].notes,
+                    tags: cart[editingCartItemIndex].tags
+                } : undefined}
+                onRemove={() => {
+                    if (editingCartItemIndex !== null) {
+                        removeFromCart(cart[editingCartItemIndex].tempId);
+                        setIsModalOpen(false);
+                        setSelectedProduct(null);
+                        setEditingCartItemIndex(null);
+                    }
+                }}
             />
 
             {/* Toast de Sucesso */}
@@ -593,21 +616,53 @@ export const Cardapio: React.FC = () => {
 
                             {/* Lista de Itens */}
                             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                                {cart.map(item => (
-                                    <div key={item.tempId} className="flex items-center gap-4 bg-[#2C2C2E] p-4 rounded-2xl border border-white/5">
-                                        <div className="flex-1">
-                                            <p className="font-bold text-lg text-white">{item.quantity}x {item.product.name}</p>
-                                            {item.addons && item.addons.length > 0 && (
-                                                <p className="text-sm text-gray-400 mt-1">+ {item.addons.map(a => a.name).join(', ')}</p>
-                                            )}
-                                            {item.notes && <p className="text-sm text-gray-500 italic mt-1">"{item.notes}"</p>}
+                                {cart.map((item, index) => (
+                                    <div key={item.tempId} className="flex flex-col gap-3 bg-[#2C2C2E] p-4 rounded-2xl border border-white/5 relative group">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="bg-[#FFCC00] text-black text-xs font-bold px-2 py-0.5 rounded-md min-w-[24px] text-center">
+                                                        {item.quantity}x
+                                                    </span>
+                                                    <p className="font-bold text-lg text-white leading-tight">{item.product.name}</p>
+                                                </div>
+
+                                                {/* Detalhes (Adicionais/Notas) */}
+                                                <div className="pl-8 mt-1 space-y-0.5">
+                                                    {item.tags && item.tags.length > 0 && (
+                                                        <p className="text-xs text-red-400 font-medium">⛔ Sin: {item.tags.join(', ')}</p>
+                                                    )}
+                                                    {item.addons && item.addons.length > 0 && (
+                                                        <p className="text-xs text-white/60">+ {item.addons.map(a => a.name).join(', ')}</p>
+                                                    )}
+                                                    {item.notes && (
+                                                        <p className="text-xs text-white/60">📝 "{item.notes}"</p>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className="font-bold text-[#FFCC00] text-lg">
+                                                    R$ {((item.product.price + (item.addons?.reduce((a, ad) => a + ad.price, 0) || 0)) * item.quantity).toFixed(2)}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex flex-col items-end gap-2">
-                                            <span className="font-bold text-[#FFCC00] text-lg">
-                                                R$ {((item.product.price + (item.addons?.reduce((a, ad) => a + ad.price, 0) || 0)) * item.quantity).toFixed(2)}
-                                            </span>
-                                            <button onClick={() => removeFromCart(item.tempId)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors">
-                                                <Trash2 size={20} />
+
+                                        {/* Actions (Edit/Delete) */}
+                                        <div className="flex justify-end gap-2 pt-2 border-t border-white/5">
+                                            <button
+                                                onClick={() => handleEditCartItem(item, index)}
+                                                className="flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-xs font-medium text-gray-400 hover:text-white transition-colors"
+                                            >
+                                                <Pencil size={14} />
+                                                Editar
+                                            </button>
+                                            <button
+                                                onClick={() => removeFromCart(item.tempId)}
+                                                className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-xs font-medium text-red-500 hover:text-red-400 transition-colors"
+                                            >
+                                                <Trash2 size={14} />
+                                                Remover
                                             </button>
                                         </div>
                                     </div>
@@ -647,13 +702,56 @@ export const Cardapio: React.FC = () => {
                     <div className="fixed inset-0 bg-black/80 z-[160] flex items-end backdrop-blur-sm">
                         <div className="bg-[#1C1C1E] w-full rounded-t-3xl max-h-[90vh] overflow-y-auto flex flex-col animate-slide-up shadow-2xl border-t border-white/10">
                             <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#1C1C1E] z-10">
-                                <h2 className="text-2xl font-bold text-white">Finalizar Pedido</h2>
+                                <h2 className="text-2xl font-bold text-white">Revisar e Finalizar</h2>
                                 <button onClick={() => setShowCheckout(false)} className="p-2 hover:bg-[#2C2C2E] rounded-full transition-colors">
                                     <X size={24} className="text-gray-400" />
                                 </button>
                             </div>
 
                             <div className="p-6 space-y-8">
+                                {/* 📝 RESUMO DO PEDIDO PRE-ENVIO */}
+                                <div className="bg-gradient-to-br from-[#2C2C2E] to-[#222] rounded-2xl p-5 border border-white/10 shadow-lg">
+                                    <h3 className="flex items-center gap-2 font-bold text-gray-400 text-xs uppercase tracking-wider mb-4">
+                                        <ShoppingCart size={14} />
+                                        Resumo do Pedido ({cart.length} itens)
+                                    </h3>
+
+                                    <div className="max-h-[200px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                                        {cart.map((item, idx) => (
+                                            <div key={item.tempId} className="flex justify-between items-start text-sm border-b border-white/5 pb-2 last:border-0 last:pb-0">
+                                                <div className="flex-1">
+                                                    <div className="font-medium text-white flex gap-2">
+                                                        <span className="text-[#FFCC00] font-bold">{item.quantity}x</span>
+                                                        {item.product.name}
+                                                    </div>
+                                                    {/* Mini detalhes para conferência */}
+                                                    {(item.tags?.length > 0 || item.notes) && (
+                                                        <p className="text-[10px] text-gray-500 pl-6 line-clamp-1">
+                                                            {item.tags?.join(', ')} {item.notes && `| Obs: ${item.notes}`}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div className="text-right flex items-center gap-3">
+                                                    <span className="text-white font-medium">
+                                                        R$ {((item.product.price + (item.addons?.reduce((a, ad) => a + ad.price, 0) || 0)) * item.quantity).toFixed(2)}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => handleEditCartItem(item, idx)}
+                                                        className="text-gray-600 hover:text-[#FFCC00] transition-colors"
+                                                        title="Editar Item"
+                                                    >
+                                                        <Pencil size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="mt-4 pt-3 border-t border-white/10 flex items-center gap-2 text-yellow-500/90 text-xs font-medium bg-yellow-500/10 p-3 rounded-lg">
+                                        <AlertCircle size={16} />
+                                        Revise os itens acima antes de enviar!
+                                    </div>
+                                </div>
                                 {/* Dados Pessoais */}
                                 <div className="space-y-4">
                                     <h3 className="font-bold text-gray-500 text-xs uppercase tracking-wider">Seus Dados</h3>
@@ -665,14 +763,24 @@ export const Cardapio: React.FC = () => {
                                             placeholder="Seu nome *"
                                             className="w-full p-4 bg-[#2C2C2E] text-white rounded-xl placeholder-gray-500 focus:ring-2 focus:ring-[#FFCC00] focus:outline-none transition-all"
                                         />
-                                        <input
-                                            type="tel"
-                                            value={customerPhone}
-                                            onChange={handlePhoneChange}
-                                            placeholder="WhatsApp (XX) 9XXXX-XXXX *"
-                                            maxLength={15}
-                                            className="w-full p-4 bg-[#2C2C2E] text-white rounded-xl placeholder-gray-500 focus:ring-2 focus:ring-[#FFCC00] focus:outline-none transition-all"
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type="tel"
+                                                value={formatPhone(customerPhone)}
+                                                onChange={handlePhoneChange}
+                                                placeholder="WhatsApp (XX) 9XXXX-XXXX *"
+                                                maxLength={15}
+                                                className={`w-full p-4 bg-[#2C2C2E] text-white rounded-xl placeholder-gray-500 focus:ring-2 focus:outline-none transition-all ${customerPhone.length > 0 && customerPhone.length < 10
+                                                    ? 'border border-red-500 focus:ring-red-500'
+                                                    : 'focus:ring-[#FFCC00]'
+                                                    }`}
+                                            />
+                                            {customerPhone.length > 0 && customerPhone.length < 10 && (
+                                                <p className="text-red-500 text-xs mt-1 absolute -bottom-5 left-1">
+                                                    Telefone incompleto (DDD + número)
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -742,8 +850,8 @@ export const Cardapio: React.FC = () => {
                                             {/* Exibir Taxa de Entrega Dinâmica */}
                                             {selectedNeighborhoodId && (
                                                 <div className="bg-orange-500/20 text-orange-400 p-3 rounded-xl flex items-center justify-between text-sm font-bold border border-orange-500/30">
-                                                    <span>Taxa de Entrega ({deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.name})</span>
-                                                    <span>+ R$ {(deliveryAreas.find(da => da.id === selectedNeighborhoodId)?.fee || 0).toFixed(2)}</span>
+                                                    <span>Taxa de Entrega ({deliveryAreas.find(da => String(da.id) === String(selectedNeighborhoodId))?.name})</span>
+                                                    <span>+ R$ {currentDeliveryFee.toFixed(2)}</span>
                                                 </div>
                                             )}
 
@@ -839,10 +947,10 @@ export const Cardapio: React.FC = () => {
                                     </div>
 
                                     {/* Taxa de Entrega */}
-                                    {orderType === 'delivery' && deliveryFee > 0 && (
+                                    {currentDeliveryFee > 0 && (
                                         <div className="flex justify-between items-center text-sm">
                                             <span className="text-blue-400">🛵 Taxa de Entrega</span>
-                                            <span className="text-blue-400 font-semibold">+ {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(deliveryFee)}</span>
+                                            <span className="text-blue-400 font-semibold">+ {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentDeliveryFee)}</span>
                                         </div>
                                     )}
 
@@ -850,7 +958,7 @@ export const Cardapio: React.FC = () => {
                                     <div className="flex justify-between items-center pt-2 border-t border-gray-600">
                                         <span className="text-gray-200 font-bold">Total</span>
                                         <span className="text-2xl font-bold text-orange-500">
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getCartTotal() + deliveryFee)}
+                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(getCartTotal() + currentDeliveryFee)}
                                         </span>
                                     </div>
                                     <button

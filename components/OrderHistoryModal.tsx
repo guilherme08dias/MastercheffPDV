@@ -27,18 +27,11 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
 
       {/* Slide-over Panel */}
       <div className="relative w-full max-w-sm h-full bg-[#1C1C1E] shadow-2xl animate-slide-in-right flex flex-col border-l border-white/10">
-        {/* Floating Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white transition-colors"
-        >
-          <X size={20} />
-        </button>
-
         <div className="flex-1 min-h-0">
           <ShiftOrdersSidebar
             shiftId={shiftId}
             onEditOrder={onEditOrder}
+            onClose={onClose}
           />
         </div>
       </div>

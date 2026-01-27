@@ -582,11 +582,14 @@
                 // ============================================================
                 // MARCAR NO BANCO ANTES DE IMPRIMIR (Previne race condition)
                 // ============================================================
-                await supabaseClient
-                    .from('orders')
-                    .update({ printed: true, printed_at: new Date().toISOString() })
-                    .eq('id', orderId);
-                console.log(`✅ [ANTI-LOOP] Pedido #${orderId} marcado como impresso NO BANCO antes de window.print()`);
+                // ============================================================
+                // MARCAR NO BANCO DEPOIS DE IMPRIMIR (Evita Race Condition)
+                // ============================================================
+                // await supabaseClient
+                //    .from('orders')
+                //    .update({ printed: true, printed_at: new Date().toISOString() })
+                //    .eq('id', orderId);
+                // console.log(`✅ [ANTI-LOOP] Pedido #${orderId} marcado como impresso NO BANCO antes de window.print()`);
 
                 if (order.type === 'delivery') {
                     // VIA 1: Estabelecimento
@@ -608,11 +611,36 @@
                     window.print();
                 }
 
-                // Update final com contagem de tentativas (já marcamos printed=true antes)
-                await supabaseClient
-                    .from('orders')
-                    .update({ print_attempts: (order.print_attempts || 0) + 1 })
-                    .eq('id', orderId);
+                // ============================================================
+                // ATUALIZAÇÃO PÓS-IMPRESSÃO (RACE CONDITION FIX)
+                // ============================================================
+                // Pequeno delay para garantir que o diálogo de impressão fechou
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                try {
+                    // NEW: Use Secure RPC to mark as printed (avoid RLS Update block)
+                    const { error } = await supabaseClient.rpc('mark_order_printed', { p_order_id: orderId });
+
+                    if (error) {
+                        console.error('Erro RPC mark_order_printed:', error);
+                        // Fallback attempt (just in case policy allows update, though unlikely with RLS)
+                        await supabaseClient
+                            .from('orders')
+                            .update({ printed: true, printed_at: new Date().toISOString() })
+                            .eq('id', orderId);
+                    }
+                } catch (rpcError) {
+                    console.error('Falha ao marcar como impresso:', rpcError);
+                }
+
+                console.log(`✅ [DB UPDATE] Pedido #${orderId} marcado como impresso APÓS window.print()`);
+
+                // LOG ESPECÍFICO PARA REIMPRESSÃO (Turno Fechado/Antigo)
+                const isOldOrder = (new Date() - new Date(order.created_at)) > (1000 * 60 * 60 * 4); // > 4 horas
+                if (isOldOrder) {
+                    console.log('[REPRINT-HISTORY] Enviando pedido antigo para a impressora');
+                    addLog(formatOrderNumber(order.daily_number || order.id), order.customer_name || 'Balcão', '⚠️ Reimpressão de Histórico');
+                }
 
                 stats.totalPrinted++;
                 stats.sessionPrinted++;
@@ -650,6 +678,28 @@
                 if (pendingOrders && pendingOrders.length > 0) {
                     console.log(`Encontrados ${pendingOrders.length} pedidos pendentes`);
                     for (const order of pendingOrders) {
+                        // KILL SWITCH CHECK: Verificar se o pedido AINDA precisa ser impresso
+                        // Como rodo em loop, o usuário pode ter apertado "Zerar Fila" enquanto eu processava o anterior.
+                        const { data: checkOrder } = await supabaseClient
+                            .from('orders')
+                            .select('id')
+                            .eq('id', order.id)
+                            .eq('printed', false)
+                            .maybeSingle();
+
+                        if (!checkOrder) {
+                            console.log(`🚫 [KILL SWITCH] Pedido #${order.daily_number || order.id} ignorado (Já foi marcado como impresso/removido da fila).`);
+                            continue; // Pula para o próximo
+                        }
+
+                        // Buscar itens do pedido (pois a query principal pode nao trazer tudo se for RPC, mas aqui é select direto)
+                        const { data: items } = await supabaseClient
+                            .from('order_items')
+                            .select('*, product:products(*), addons_detail')
+                            .eq('order_id', order.id);
+
+                        if (items) order.order_items = items;
+
                         await printOrder(order);
                         await new Promise(resolve => setTimeout(resolve, 2000));
                     }
