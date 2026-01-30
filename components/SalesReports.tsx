@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { TrendingUp, Calendar, Search, Loader2, DollarSign, ShoppingBag, Info } from 'lucide-react';
+import { SalesRanking } from './SalesRanking';
 import { LineChart, Line, XAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getBrasiliaDate } from '../utils/dateUtils';
 
@@ -20,6 +21,7 @@ interface TopProduct {
 
 export const SalesReports: React.FC = () => {
     // Default to current month using Brasilia Date
+    const [activeTab, setActiveTab] = useState<'sales' | 'ranking'>('sales'); // Added this line
     const [startDate, setStartDate] = useState(() => {
         const date = new Date(getBrasiliaDate());
         date.setDate(1); // First day of month
@@ -305,274 +307,307 @@ export const SalesReports: React.FC = () => {
     return (
         <div className="space-y-6">
             {/* Header and Filters */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-[#1C1C1E] p-4 rounded-2xl shadow-sm border border-white/10 transition-colors">
-                <div>
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                        <TrendingUp className="w-6 h-6 text-[#FFCC00]" />
-                        Relatórios de Vendas
-                    </h2>
-                    <div className="flex items-center gap-2 mt-1">
-                        <p className="text-gray-400 text-sm">Acompanhe o desempenho do seu negócio</p>
-                        <span className="px-2 py-0.5 bg-green-900/30 text-green-400 text-[10px] font-bold rounded-full border border-green-800 flex items-center gap-1">
-                            <Info size={10} />
-                            Timezone: Brasília (Active)
-                        </span>
-                    </div>
-                </div>
+            {activeTab === 'sales' && (
+                <div className="flex flex-col gap-4 bg-[#1C1C1E] p-4 md:p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
+                                <TrendingUp className="w-6 h-6 text-[#FFCC00]" />
+                                Relatórios de Vendas
+                            </h2>
+                            <div className="flex flex-col md:flex-row md:items-center gap-2 mt-1">
+                                <p className="text-gray-400 text-sm">Acompanhe o desempenho do seu negócio</p>
+                                <span className="w-fit px-2 py-0.5 bg-green-900/30 text-green-400 text-[10px] font-bold rounded-full border border-green-800 flex items-center gap-1">
+                                    <Info size={10} />
+                                    Timezone: Brasília (Active)
+                                </span>
+                            </div>
+                        </div>
 
-                <div className="flex items-center gap-2 bg-[#2C2C2E] p-2 rounded-lg border border-white/10">
-                    <Calendar className="w-5 h-5 text-gray-400" />
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="bg-transparent border-none text-sm focus:ring-0 text-white"
-                        />
-                        <span className="text-gray-400">-</span>
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="bg-transparent border-none text-sm focus:ring-0 text-white"
-                        />
+                        <div className="w-full md:w-auto flex flex-col md:flex-row items-center gap-2 bg-[#2C2C2E] p-3 md:p-2 rounded-xl md:rounded-lg border border-white/10">
+                            <div className="flex items-center gap-2 w-full md:w-auto">
+                                <Calendar className="w-5 h-5 text-gray-400 shrink-0" />
+                                <div className="flex items-center gap-2 w-full">
+                                    <input
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="bg-transparent border-none text-sm focus:ring-0 text-white w-full"
+                                    />
+                                    <span className="text-gray-400">-</span>
+                                    <input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="bg-transparent border-none text-sm focus:ring-0 text-white w-full"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                onClick={fetchData}
+                                className="w-full md:w-auto p-2 bg-[#FFCC00] text-black rounded-lg hover:bg-[#E5B800] transition-colors flex items-center justify-center font-bold"
+                                title="Atualizar"
+                            >
+                                <Search className="w-4 h-4 md:mr-0 mr-2" />
+                                <span className="md:hidden">Buscar</span>
+                            </button>
+                        </div>
                     </div>
-                    <button
-                        onClick={fetchData}
-                        className="p-2 bg-[#FFCC00] text-black rounded-md hover:bg-[#E5B800] transition-colors"
-                        title="Atualizar"
-                    >
-                        <Search className="w-4 h-4" />
-                    </button>
                 </div>
+            )}
+
+            {/* Tab Navigation */}
+            <div className="flex gap-2">
+                <button
+                    onClick={() => setActiveTab('sales')}
+                    className={`flex-1 md:flex-none px-4 py-3 md:py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'sales' ? 'bg-[#FFCC00] text-black shadow-lg' : 'bg-[#2C2C2E] text-gray-400 hover:text-white'}`}
+                >
+                    Resumo Geral
+                </button>
+                <button
+                    onClick={() => setActiveTab('ranking')}
+                    className={`flex-1 md:flex-none px-4 py-3 md:py-2 rounded-lg text-sm font-bold transition-colors ${activeTab === 'ranking' ? 'bg-[#FFCC00] text-black shadow-lg' : 'bg-[#2C2C2E] text-gray-400 hover:text-white'}`}
+                >
+                    Ranking de Produtos
+                </button>
             </div>
 
-            {loading ? (
-                <div className="flex justify-center items-center h-64">
-                    <Loader2 className="w-8 h-8 animate-spin text-[#FFCC00]" />
-                </div>
+            {activeTab === 'ranking' ? (
+                <SalesRanking />
             ) : (
                 <>
-                    {stats.orderCount === 0 && stats.totalSales === 0 ? (
-                        <div className="flex flex-col items-center justify-center p-12 bg-[#1C1C1E] rounded-2xl border border-white/10 text-center">
-                            <div className="w-16 h-16 bg-[#2C2C2E] rounded-full flex items-center justify-center mb-4">
-                                <ShoppingBag className="w-8 h-8 text-gray-400" />
-                            </div>
-                            <h3 className="text-lg font-bold text-white">Aguardando vendas...</h3>
-                            <p className="text-gray-400 text-sm mt-1 max-w-md">
-                                Nenhum pedido encontrado para os turnos abertos neste período. As vendas aparecerão aqui assim que forem registradas.
-                            </p>
+                    {/* Existing Sales Content Starts Here */}
+
+                    {loading ? (
+                        <div className="flex justify-center items-center h-64">
+                            <Loader2 className="w-8 h-8 animate-spin text-[#FFCC00]" />
                         </div>
                     ) : (
                         <>
-                            {/* Summary Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/5 transition-all duration-300 hover:bg-[#2C2C2E] flex flex-col justify-between h-full group">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-gray-400 text-sm font-medium">Receita Bruta</p>
-                                            <h3 className="text-3xl font-bold text-white mt-1">
-                                                R$ {stats.totalSales.toFixed(2)}
-                                            </h3>
-                                        </div>
-                                        <div className="p-3 bg-green-900/20 rounded-lg">
-                                            <DollarSign className="w-6 h-6 text-green-400" />
-                                        </div>
+                            {stats.orderCount === 0 && stats.totalSales === 0 ? (
+                                <div className="flex flex-col items-center justify-center p-12 bg-[#1C1C1E] rounded-2xl border border-white/10 text-center">
+                                    <div className="w-16 h-16 bg-[#2C2C2E] rounded-full flex items-center justify-center mb-4">
+                                        <ShoppingBag className="w-8 h-8 text-gray-400" />
                                     </div>
-                                    <div className="text-sm text-gray-400">
-                                        {stats.orderCount} pedidos no período
-                                    </div>
+                                    <h3 className="text-lg font-bold text-white">Aguardando vendas...</h3>
+                                    <p className="text-gray-400 text-sm mt-1 max-w-md">
+                                        Nenhum pedido encontrado para os turnos abertos neste período. As vendas aparecerão aqui assim que forem registradas.
+                                    </p>
                                 </div>
+                            ) : (
+                                <>
+                                    {/* Summary Cards */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                                        <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/5 transition-all duration-300 hover:bg-[#2C2C2E] flex flex-col justify-between h-full group">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <p className="text-gray-400 text-xs uppercase font-bold tracking-wider mb-1">Receita Bruta</p>
+                                                    <h3 className="text-3xl md:text-4xl font-black text-white leading-none">
+                                                        R$ {stats.totalSales.toFixed(2)}
+                                                    </h3>
+                                                </div>
+                                                <div className="p-3 bg-green-900/20 rounded-lg">
+                                                    <DollarSign className="w-6 h-6 text-green-400" />
+                                                </div>
+                                            </div>
+                                            <div className="text-sm text-gray-400 mt-2 flex items-center gap-2 bg-[#2C2C2E] p-2 rounded-lg w-fit">
+                                                <ShoppingBag size={14} className="text-gray-300" />
+                                                <span className="font-bold text-gray-300">{stats.orderCount}</span>
+                                                <span>pedidos no período</span>
+                                            </div>
+                                        </div>
 
-                                <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-gray-400 text-sm font-medium">Ticket Médio</p>
-                                            <h3 className="text-3xl font-bold text-white mt-1">
-                                                R$ {stats.averageTicket.toFixed(2)}
-                                            </h3>
+                                        <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <p className="text-gray-400 text-sm font-medium">Ticket Médio</p>
+                                                    <h3 className="text-3xl font-bold text-white mt-1">
+                                                        R$ {stats.averageTicket.toFixed(2)}
+                                                    </h3>
+                                                </div>
+                                                <div className="p-3 bg-blue-900/20 rounded-lg">
+                                                    <TrendingUp className="w-6 h-6 text-blue-400" />
+                                                </div>
+                                            </div>
+                                            <div className="text-sm text-gray-400">
+                                                Média por pedido
+                                            </div>
                                         </div>
-                                        <div className="p-3 bg-blue-900/20 rounded-lg">
-                                            <TrendingUp className="w-6 h-6 text-blue-400" />
-                                        </div>
-                                    </div>
-                                    <div className="text-sm text-gray-400">
-                                        Média por pedido
-                                    </div>
-                                </div>
 
-                                <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-gray-400 text-sm font-medium">Lucro Líquido (Est.)</p>
-                                            <h3 className={`text-3xl font-bold mt-1 ${financials.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                R$ {financials.netProfit.toFixed(2)}
-                                            </h3>
+                                        <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <p className="text-gray-400 text-sm font-medium">Lucro Líquido (Est.)</p>
+                                                    <h3 className={`text-3xl font-bold mt-1 ${financials.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                        R$ {financials.netProfit.toFixed(2)}
+                                                    </h3>
+                                                </div>
+                                                <div className={`p-3 rounded-lg ${financials.netProfit >= 0 ? 'bg-green-900/20' : 'bg-red-900/20'}`}>
+                                                    <DollarSign className={`w-6 h-6 ${financials.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+                                                </div>
+                                            </div>
+                                            <div className="text-sm text-gray-400">
+                                                Margem: {financials.profitMargin.toFixed(1)}%
+                                            </div>
                                         </div>
-                                        <div className={`p-3 rounded-lg ${financials.netProfit >= 0 ? 'bg-green-900/20' : 'bg-red-900/20'}`}>
-                                            <DollarSign className={`w-6 h-6 ${financials.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`} />
-                                        </div>
-                                    </div>
-                                    <div className="text-sm text-gray-400">
-                                        Margem: {financials.profitMargin.toFixed(1)}%
-                                    </div>
-                                </div>
 
-                                <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-gray-400 text-sm font-medium">Média por Item</p>
-                                            <h3 className="text-3xl font-bold text-white mt-1">
-                                                R$ {stats.averageItemCost?.toFixed(2) || '0.00'}
-                                            </h3>
+                                        <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <p className="text-gray-400 text-sm font-medium">Média por Item</p>
+                                                    <h3 className="text-3xl font-bold text-white mt-1">
+                                                        R$ {stats.averageItemCost?.toFixed(2) || '0.00'}
+                                                    </h3>
+                                                </div>
+                                                <div className="p-3 bg-purple-900/20 rounded-lg">
+                                                    <ShoppingBag className="w-6 h-6 text-purple-400" />
+                                                </div>
+                                            </div>
+                                            <div className="text-sm text-gray-400">
+                                                Valor médio por lanche
+                                            </div>
                                         </div>
-                                        <div className="p-3 bg-purple-900/20 rounded-lg">
-                                            <ShoppingBag className="w-6 h-6 text-purple-400" />
+                                    </div>
+
+                                    {/* Charts Section - 12 Columns Grid */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                                        {/* Sales Chart (8 Cols) */}
+                                        <div className="lg:col-span-8 bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/5 transition-all duration-300 hover:border-white/10 flex flex-col h-full min-h-[400px]">
+                                            <h3 className="text-lg font-bold text-white mb-6 tracking-tight">Receitas vs Despesas</h3>
+                                            <div className="flex-1 w-full min-h-0">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <LineChart data={chartData}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
+                                                        <XAxis
+                                                            dataKey="dayName"
+                                                            axisLine={false}
+                                                            tickLine={false}
+                                                            tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                                                            dy={10}
+                                                        />
+                                                        <Tooltip
+                                                            contentStyle={{
+                                                                backgroundColor: '#1F2937',
+                                                                border: 'none',
+                                                                borderRadius: '8px',
+                                                                color: '#F3F4F6'
+                                                            }}
+                                                            itemStyle={{ color: '#F3F4F6' }}
+                                                            formatter={(value: number, name: string, props: any) => {
+                                                                const label = props.dataKey === 'total' ? 'Receitas' : name;
+                                                                return [`R$ ${value.toFixed(2)}`, label];
+                                                            }}
+                                                            labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
+                                                        />
+                                                        <Legend
+                                                            wrapperStyle={{ paddingTop: '20px' }}
+                                                            iconType="line"
+                                                            formatter={(value: string) => (
+                                                                <span style={{ color: '#9CA3AF', fontSize: '14px' }}>{value}</span>
+                                                            )}
+                                                        />
+                                                        <Line
+                                                            type="monotone"
+                                                            dataKey="total"
+                                                            stroke="#10b981" // Green-500
+                                                            strokeWidth={3}
+                                                            dot={{ fill: '#10b981', strokeWidth: 2, r: 4, stroke: '#fff' }}
+                                                            activeDot={{ r: 6, strokeWidth: 0 }}
+                                                            connectNulls={true}
+                                                            name="Receitas"
+                                                        />
+                                                        <Line
+                                                            type="monotone"
+                                                            dataKey="expenses"
+                                                            stroke="#ef4444" // Red-500
+                                                            strokeWidth={3}
+                                                            dot={{ fill: '#ef4444', strokeWidth: 2, r: 4, stroke: '#fff' }}
+                                                            activeDot={{ r: 6, strokeWidth: 0 }}
+                                                            connectNulls={true}
+                                                            name="Despesas"
+                                                        />
+                                                    </LineChart>
+                                                </ResponsiveContainer>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="text-sm text-gray-400">
-                                        Valor médio por lanche
-                                    </div>
-                                </div>
-                            </div>
 
-                            {/* Charts Section - 12 Columns Grid */}
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-                                {/* Sales Chart (8 Cols) */}
-                                <div className="lg:col-span-8 bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/5 transition-all duration-300 hover:border-white/10 flex flex-col h-full min-h-[400px]">
-                                    <h3 className="text-lg font-bold text-white mb-6 tracking-tight">Receitas vs Despesas</h3>
-                                    <div className="flex-1 w-full min-h-0">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={chartData}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
-                                                <XAxis
-                                                    dataKey="dayName"
-                                                    axisLine={false}
-                                                    tickLine={false}
-                                                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                                                    dy={10}
-                                                />
-                                                <Tooltip
-                                                    contentStyle={{
-                                                        backgroundColor: '#1F2937',
-                                                        border: 'none',
-                                                        borderRadius: '8px',
-                                                        color: '#F3F4F6'
-                                                    }}
-                                                    itemStyle={{ color: '#F3F4F6' }}
-                                                    formatter={(value: number, name: string, props: any) => {
-                                                        const label = props.dataKey === 'total' ? 'Receitas' : name;
-                                                        return [`R$ ${value.toFixed(2)}`, label];
-                                                    }}
-                                                    labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
-                                                />
-                                                <Legend
-                                                    wrapperStyle={{ paddingTop: '20px' }}
-                                                    iconType="line"
-                                                    formatter={(value: string) => (
-                                                        <span style={{ color: '#9CA3AF', fontSize: '14px' }}>{value}</span>
-                                                    )}
-                                                />
-                                                <Line
-                                                    type="monotone"
-                                                    dataKey="total"
-                                                    stroke="#10b981" // Green-500
-                                                    strokeWidth={3}
-                                                    dot={{ fill: '#10b981', strokeWidth: 2, r: 4, stroke: '#fff' }}
-                                                    activeDot={{ r: 6, strokeWidth: 0 }}
-                                                    connectNulls={true}
-                                                    name="Receitas"
-                                                />
-                                                <Line
-                                                    type="monotone"
-                                                    dataKey="expenses"
-                                                    stroke="#ef4444" // Red-500
-                                                    strokeWidth={3}
-                                                    dot={{ fill: '#ef4444', strokeWidth: 2, r: 4, stroke: '#fff' }}
-                                                    activeDot={{ r: 6, strokeWidth: 0 }}
-                                                    connectNulls={true}
-                                                    name="Despesas"
-                                                />
-                                            </LineChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </div>
-
-                                {/* Top Products (4 Cols) */}
-                                <div className="lg:col-span-4 bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/5 transition-all duration-300 hover:border-white/10 flex flex-col h-full">
-                                    <h3 className="text-lg font-bold text-white mb-6">Produtos Mais Vendidos</h3>
-                                    <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
-                                        {topProducts.map((product, index) => (
-                                            <div key={index} className="flex items-center justify-between p-3 hover:bg-[#2C2C2E] rounded-xl transition-colors border border-transparent hover:border-white/5">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-orange-900/20 flex items-center justify-center text-orange-400 font-bold text-sm shrink-0">
-                                                        {index + 1}
+                                        {/* Top Products (4 Cols) */}
+                                        <div className="lg:col-span-4 bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/5 transition-all duration-300 hover:border-white/10 flex flex-col h-full">
+                                            <h3 className="text-lg font-bold text-white mb-6">Produtos Mais Vendidos</h3>
+                                            <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
+                                                {topProducts.map((product, index) => (
+                                                    <div key={index} className="flex items-center justify-between p-3 hover:bg-[#2C2C2E] rounded-xl transition-colors border border-transparent hover:border-white/5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-orange-900/20 flex items-center justify-center text-orange-400 font-bold text-sm shrink-0">
+                                                                {index + 1}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-medium text-white line-clamp-1">{product.name}</p>
+                                                                <p className="text-xs text-gray-400">{product.quantity} unidades</p>
+                                                            </div>
+                                                        </div>
+                                                        <span className="font-bold text-white shrink-0">
+                                                            R$ {product.total.toFixed(2)}
+                                                        </span>
                                                     </div>
-                                                    <div>
-                                                        <p className="font-medium text-white line-clamp-1">{product.name}</p>
-                                                        <p className="text-xs text-gray-400">{product.quantity} unidades</p>
-                                                    </div>
-                                                </div>
-                                                <span className="font-bold text-white shrink-0">
-                                                    R$ {product.total.toFixed(2)}
-                                                </span>
-                                            </div>
-                                        ))}
-                                        {topProducts.length === 0 && (
-                                            <p className="text-gray-400 text-center py-4 flex items-center justify-center h-full">Nenhum dado disponível</p>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Expenses Breakdown */}
-                            <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
-                                <h3 className="text-lg font-bold text-white mb-6">Despesas por Categoria</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="space-y-4">
-                                        {financials.expensesByCategory.map((category, index) => (
-                                            <div key={index} className="space-y-2">
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="font-medium text-gray-300 capitalize">{category.category}</span>
-                                                    <span className="text-gray-400">{category.percentage.toFixed(1)}%</span>
-                                                </div>
-                                                <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-red-500 rounded-full"
-                                                        style={{ width: `${category.percentage}%` }}
-                                                    ></div>
-                                                </div>
-                                                <p className="text-xs text-gray-400 text-right">R$ {category.total.toFixed(2)}</p>
-                                            </div>
-                                        ))}
-                                        {financials.expensesByCategory.length === 0 && (
-                                            <p className="text-gray-400">Nenhuma despesa registrada no período.</p>
-                                        )}
-                                    </div>
-
-                                    {/* DRE Simplificado */}
-                                    <div className="bg-[#000000] p-6 rounded-xl border border-white/10">
-                                        <h4 className="font-bold text-white mb-4">Resumo Financeiro (DRE)</h4>
-                                        <div className="space-y-3 text-sm">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Receita Bruta</span>
-                                                <span className="font-bold text-green-400">+ R$ {stats.totalSales.toFixed(2)}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Despesas Operacionais</span>
-                                                <span className="font-bold text-red-400">- R$ {financials.totalExpenses.toFixed(2)}</span>
-                                            </div>
-                                            <div className="h-px bg-white/10 my-2"></div>
-                                            <div className="flex justify-between text-base">
-                                                <span className="font-bold text-white">Lucro Líquido</span>
-                                                <span className={`font-bold ${financials.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                                    R$ {financials.netProfit.toFixed(2)}
-                                                </span>
+                                                ))}
+                                                {topProducts.length === 0 && (
+                                                    <p className="text-gray-400 text-center py-4 flex items-center justify-center h-full">Nenhum dado disponível</p>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
+
+                                    {/* Expenses Breakdown */}
+                                    <div className="bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
+                                        <h3 className="text-lg font-bold text-white mb-6">Despesas por Categoria</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div className="space-y-4">
+                                                {financials.expensesByCategory.map((category, index) => (
+                                                    <div key={index} className="space-y-2">
+                                                        <div className="flex justify-between text-sm">
+                                                            <span className="font-medium text-gray-300 capitalize">{category.category}</span>
+                                                            <span className="text-gray-400">{category.percentage.toFixed(1)}%</span>
+                                                        </div>
+                                                        <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-red-500 rounded-full"
+                                                                style={{ width: `${category.percentage}%` }}
+                                                            ></div>
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 text-right">R$ {category.total.toFixed(2)}</p>
+                                                    </div>
+                                                ))}
+                                                {financials.expensesByCategory.length === 0 && (
+                                                    <p className="text-gray-400">Nenhuma despesa registrada no período.</p>
+                                                )}
+                                            </div>
+
+                                            {/* DRE Simplificado */}
+                                            <div className="bg-[#000000] p-6 rounded-xl border border-white/10">
+                                                <h4 className="font-bold text-white mb-4">Resumo Financeiro (DRE)</h4>
+                                                <div className="space-y-3 text-sm">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-400">Receita Bruta</span>
+                                                        <span className="font-bold text-green-400">+ R$ {stats.totalSales.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-gray-400">Despesas Operacionais</span>
+                                                        <span className="font-bold text-red-400">- R$ {financials.totalExpenses.toFixed(2)}</span>
+                                                    </div>
+                                                    <div className="h-px bg-white/10 my-2"></div>
+                                                    <div className="flex justify-between text-base">
+                                                        <span className="font-bold text-white">Lucro Líquido</span>
+                                                        <span className={`font-bold ${financials.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                            R$ {financials.netProfit.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </>
                     )}
                 </>

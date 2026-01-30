@@ -120,7 +120,7 @@ export const StockEntryModal: React.FC<StockEntryModalProps> = ({ isOpen, onClos
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg animate-scale-in overflow-hidden">
+            <div className="bg-[#1C1C1E] border border-white/10 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in overflow-hidden">
 
                 {/* Header */}
                 <div className="bg-brand-600 p-6 flex justify-between items-center text-white">
@@ -151,7 +151,7 @@ export const StockEntryModal: React.FC<StockEntryModalProps> = ({ isOpen, onClos
 
                         {/* 1. Seleção de Item */}
                         <div className="space-y-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                            <label className="block text-sm font-medium text-gray-300">
                                 Item Comprado
                             </label>
 
@@ -164,7 +164,7 @@ export const StockEntryModal: React.FC<StockEntryModalProps> = ({ isOpen, onClos
                                         placeholder="Buscar pão, carne, refri..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none dark:bg-slate-800 dark:text-white"
+                                        className="w-full pl-10 pr-4 py-3 border-none bg-[#2C2C2E] rounded-xl focus:ring-2 focus:ring-[#FFCC00] outline-none text-white placeholder-gray-500"
                                     />
                                     {searchTerm && (
                                         <div className="absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg shadow-lg z-10">

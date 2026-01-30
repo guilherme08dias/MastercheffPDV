@@ -303,27 +303,27 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl animate-scale-in h-[90vh] flex flex-col">
-                <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 rounded-t-2xl z-10">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-[#1C1C1E] rounded-2xl shadow-2xl w-full max-w-2xl animate-scale-in max-h-[90vh] flex flex-col border border-white/10">
+                <div className="p-6 border-b border-white/10 flex justify-between items-center bg-[#1C1C1E] rounded-t-2xl z-10">
+                    <h2 className="text-xl font-bold text-white">
                         {productToEdit ? 'Editar Produto' : 'Novo Produto'}
                     </h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
+                    <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
                         <X size={24} />
                     </button>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex border-b border-gray-100 dark:border-slate-800 px-6 bg-gray-50 dark:bg-slate-800/50">
+                <div className="flex border-b border-white/10 px-6 bg-[#1C1C1E]">
                     <button
-                        className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'general' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                        className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'general' ? 'border-[#FFCC00] text-[#FFCC00]' : 'border-transparent text-gray-400 hover:text-white'}`}
                         onClick={() => setActiveTab('general')}
                     >
                         Dados Gerais
                     </button>
                     <button
-                        className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'ingredients' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+                        className={`py-3 px-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'ingredients' ? 'border-[#FFCC00] text-[#FFCC00]' : 'border-transparent text-gray-400 hover:text-white'}`}
                         onClick={() => setActiveTab('ingredients')}
                     >
                         Ficha Técnica
@@ -336,23 +336,23 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             <div className="space-y-4">
                                 <div className="grid grid-cols-4 gap-4">
                                     <div className="col-span-1">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Nº</label>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Nº</label>
                                         <input
                                             type="number"
                                             value={menuNumber}
                                             onChange={(e) => setMenuNumber(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:bg-slate-800 dark:text-white"
+                                            className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white text-center font-bold"
                                             placeholder="#"
                                         />
                                     </div>
                                     <div className="col-span-3">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Nome do Produto</label>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Nome do Produto</label>
                                         <input
                                             type="text"
                                             required
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:bg-slate-800 dark:text-white"
+                                            className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
                                             placeholder="Ex: Xis Salada"
                                         />
                                     </div>
@@ -360,24 +360,24 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
                                 {/* Descrição/Ingredientes */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Descrição / Ingredientes</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Descrição / Ingredientes</label>
                                     <textarea
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
                                         rows={3}
-                                        className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:bg-slate-800 dark:text-white resize-none"
+                                        className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white resize-none"
                                         placeholder="Ex: Pão brioche, blend 150g, bacon, queijo cheddar, maionese artesanal..."
                                     />
-                                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Esta descrição será exibida no cardápio do cliente</p>
+                                    <p className="text-xs text-gray-500 mt-1">Esta descrição será exibida no cardápio do cliente</p>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Categoria</label>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Categoria</label>
                                         <select
                                             value={category}
                                             onChange={(e) => setCategory(e.target.value as ProductCategory)}
-                                            className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:bg-slate-800 dark:text-white"
+                                            className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
                                         >
                                             <option value="xis">Xis</option>
                                             <option value="dog">Dog</option>
@@ -388,7 +388,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                     </div>
 
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Preço (R$)</label>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Preço (R$)</label>
                                         <input
                                             type="number"
                                             required
@@ -396,7 +396,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                                             min="0"
                                             value={price}
                                             onChange={(e) => setPrice(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none dark:bg-slate-800 dark:text-white"
+                                            className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white text-lg font-bold"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -497,15 +497,15 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     </form>
                 </div>
 
-                <div className="p-6 border-t border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-b-2xl mt-auto z-10">
+                <div className="p-6 border-t border-white/10 bg-[#1C1C1E] rounded-b-2xl mt-auto z-10">
                     {/* CMV Display */}
                     {ingredients.length > 0 && (
-                        <div className="mb-4 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
+                        <div className="mb-4 p-3 bg-green-900/10 rounded-xl border border-green-500/20">
                             <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-green-800 dark:text-green-300">
+                                <span className="text-sm font-bold text-green-400">
                                     💰 Custo Estimado de Produção (CMV)
                                 </span>
-                                <span className="text-lg font-bold text-green-700 dark:text-green-400">
+                                <span className="text-lg font-bold text-green-400">
                                     R$ {totalCost.toFixed(2)}
                                 </span>
                             </div>
@@ -516,7 +516,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-1 py-3 border border-gray-300 dark:border-slate-700 text-gray-700 dark:text-slate-300 font-medium rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+                            className="flex-1 py-3 border border-white/10 text-gray-300 font-medium rounded-xl hover:bg-white/5 transition-colors"
                         >
                             Cancelar
                         </button>
@@ -524,7 +524,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                             type="submit"
                             form="product-form"
                             disabled={loading}
-                            className="flex-1 py-3 bg-brand-600 text-white font-bold rounded-xl hover:bg-brand-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-brand-200"
+                            className="flex-1 py-3 bg-[#FFCC00] text-black font-bold rounded-xl hover:bg-[#E5B800] transition-colors flex items-center justify-center gap-2 shadow-lg"
                         >
                             {loading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
                             Salvar Produto

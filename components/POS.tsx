@@ -6,11 +6,14 @@ import { ProductModal } from './ProductModal';
 import { CartSidebar } from './CartSidebar';
 import { ShiftOrdersSidebar } from './ShiftOrdersSidebar';
 import { OrderHistoryModal } from './OrderHistoryModal';
-import { ShoppingCart, LogOut, ArrowLeft, History, Sun, Moon, Check, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, LogOut, ArrowLeft, History, Check, AlertTriangle, Search, LayoutDashboard, Settings, Store, RefreshCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getBrasiliaDateFormatted } from '../utils/dateUtils';
 import { POSNavigation } from './POSNavigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { playSuccess, playError } from '../utils/audio';
+import { checkProductAvailability, StockStatus } from '../utils/stockUtils';
+import { StockItem, ProductIngredient } from '../types';
 
 interface POSProps {
   user: Profile;
@@ -32,15 +35,52 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [addons, setAddons] = useState<Addon[]>([]);
 
+  // REALTIME STOCK STATE
+  const [stockMap, setStockMap] = useState<Record<string, StockItem>>({});
+  const [ingredientsMap, setIngredientsMap] = useState<Record<string, ProductIngredient[]>>({});
+
   // Estado da UI
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Alternar barra lateral móvel
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
+  const [isStoreOpen, setIsStoreOpen] = useState(true); // Store Status State
   const [searchQuery, setSearchQuery] = useState(''); // Estado da busca
-  const [isDarkMode, setIsDarkMode] = useState(false); // Estado do Dark Mode
   const [showToast, setShowToast] = useState(false); // Dynamic Island Toast
+
+  // Helper Functions for Mobile Admin Actions
+  const toggleStoreStatus = async (status: boolean) => {
+    try {
+      // Optimistic update
+      setIsStoreOpen(status);
+      const { error } = await supabase
+        .from('store_settings')
+        .update({ is_open: status })
+        .eq('id', 1); // Assuming single store record
+
+      if (error) throw error;
+      toast.success(status ? 'Loja Aberta!' : 'Loja Fechada!');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao alterar status da loja');
+      setIsStoreOpen(!status); // Revert on error
+    }
+  };
+
+  const clearPrintQueue = async () => {
+    try {
+      // Local state clear
+      setPrintedOrderIds(new Set());
+      // Trigger backend RPC if it exists, otherwise just local
+      const { error } = await supabase.rpc('clear_print_queue');
+      if (error) console.warn("Backend shuffle", error); // optional
+      toast.success('Fila de impressão local limpa!');
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Estado do Carrinho
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -87,6 +127,42 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
   // Carregamento Inicial de Dados
   useEffect(() => {
     checkShift();
+    fetchStockAndIngredients();
+  }, []);
+
+  // CARREGAR ESTOQUE E FICHA TÉCNICA
+  const fetchStockAndIngredients = async () => {
+    // 1. Fetch Stock Items
+    const { data: stockData } = await supabase.from('stock_items').select('*');
+    if (stockData) {
+      const map: Record<string, StockItem> = {};
+      stockData.forEach(item => { map[item.id] = item; });
+      setStockMap(map);
+    }
+
+    // 2. Fetch Product Ingredients
+    const { data: ingData } = await supabase.from('product_ingredients').select('*');
+    if (ingData) {
+      const map: Record<string, ProductIngredient[]> = {};
+      ingData.forEach(ing => {
+        if (!map[ing.product_id]) map[ing.product_id] = [];
+        map[ing.product_id].push(ing);
+      });
+      setIngredientsMap(map);
+    }
+  };
+
+  // REALTIME STOCK LISTENER
+  useEffect(() => {
+    const channel = supabase
+      .channel('stock_changes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stock_items' }, payload => {
+        const newItem = payload.new as StockItem;
+        setStockMap(prev => ({ ...prev, [newItem.id]: newItem }));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   // Realtime Listener para Pedidos Web - COM TRAVA ANTI-DUPLICATA
@@ -486,6 +562,30 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
     setCart(cart.filter(item => item.tempId !== tempId));
   };
 
+  // SAFETY: Audio Feedback is imported at top
+
+  // STATE: Checkout Locking
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // SAFETY: Anti-Fumble (Prevent closing tab with items)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (cart.length > 0) {
+        e.preventDefault();
+        e.returnValue = ''; // Chrome requires returnValue to be set
+      }
+    };
+
+    if (cart.length > 0) {
+      window.addEventListener('beforeunload', handleBeforeUnload);
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [cart.length]);
+
+
   const handleCheckout = async (
     customerName: string,
     type: OrderType,
@@ -495,12 +595,26 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
   ) => {
     console.log("handleCheckout iniciado", { customerName, type, paymentMethod, neighborhood, discount });
 
+    if (isSubmitting) return; // Prevent double click
+
     if (!currentShift) {
       console.error("Erro: currentShift é nulo no checkout");
       alert("Erro: Nenhum turno aberto. Tente recarregar a página.");
       return;
     }
+
     setIsProcessing(true);
+    setIsSubmitting(true); // LOCK button
+
+    // SAFETY: Timeout to unlock button if server hangs
+    const safetyTimeout = setTimeout(() => {
+      if (isProcessing) {
+        setIsSubmitting(false);
+        setIsProcessing(false);
+        try { playError() } catch (e) { }
+        toast.error("O pedido demorou muito para responder. Verifique sua conexão e tente novamente.");
+      }
+    }, 15000); // 15s timeout
 
     // 1. Recalcular Subtotal (incluindo Adicionais)
     const subtotal = cart.reduce((acc, item) => {
@@ -589,69 +703,7 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
 
       console.log("Itens inseridos com sucesso");
 
-      // 3. BAIXA DE ESTOQUE (INVENTÁRIO)
-      try {
-        console.log("Iniciando baixa de estoque...");
-        for (const cartItem of cart) {
-          // Buscar ingredientes do produto
-          const { data: ingredients } = await supabase
-            .from('product_ingredients')
-            .select('*')
-            .eq('product_id', cartItem.product.id);
-
-          if (ingredients && ingredients.length > 0) {
-            for (const ing of ingredients) {
-              const qtyToDeduct = ing.quantity * cartItem.quantity;
-
-              // RPC seria ideal aqui, mas vamos de decremento direto pra simplificar
-              // Usando rpc 'decrement_stock' se existisse, ou fetch+update
-              const { data: stockItem } = await supabase
-                .from('stock_items')
-                .select('current_quantity')
-                .eq('id', ing.stock_item_id)
-                .single();
-
-              if (stockItem) {
-                const newQty = (stockItem.current_quantity || 0) - qtyToDeduct;
-                await supabase
-                  .from('stock_items')
-                  .update({ current_quantity: newQty })
-                  .eq('id', ing.stock_item_id);
-              }
-            }
-          }
-
-          // --- NOVO: BAIXA DOS ADICIONAIS ---
-          if (cartItem.addons && cartItem.addons.length > 0) {
-            for (const addon of cartItem.addons) {
-              const { data: addonIngredients } = await supabase
-                .from('addon_ingredients')
-                .select('*')
-                .eq('addon_id', addon.id);
-
-              if (addonIngredients) {
-                for (const ing of addonIngredients) {
-                  const qtyToDeduct = ing.quantity * cartItem.quantity; // 1 addon * qtd lanches
-
-                  const { data: stockItem } = await supabase
-                    .from('stock_items')
-                    .select('current_quantity')
-                    .eq('id', ing.stock_item_id)
-                    .single();
-
-                  if (stockItem) {
-                    const newQty = (stockItem.current_quantity || 0) - qtyToDeduct;
-                    await supabase.from('stock_items').update({ current_quantity: newQty }).eq('id', ing.stock_item_id);
-                  }
-                }
-              }
-            }
-          }
-        }
-        console.log("Baixa de estoque concluída.");
-      } catch (stockError) {
-        console.error("Erro na baixa de estoque (ignorado para não travar venda):", stockError);
-      }
+      // 3. BAIXA DE ESTOQUE (INVENTÁRIO) - Removido: Agora feito via DB Trigger (fn_decrement_stock)
 
       // 4. Preparar Modal de Sucesso
       setLastOrderNumber(orderData.daily_number || orderData.id);
@@ -664,12 +716,71 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
       // Ativar modal de sucesso
       setShouldPrint(true);
 
+      // SAFETY: Play Success Sound
+      clearTimeout(safetyTimeout);
+      try { playSuccess() } catch (e) { }
+
     } catch (e: any) {
       console.error("Exceção no checkout:", e);
+      clearTimeout(safetyTimeout);
+      try { playError() } catch (e) { }
       toast.error(`Erro ao processar venda. Verifique sua conexão. ${e.message || ''}`);
     } finally {
       setIsProcessing(false);
+      setIsSubmitting(false); // Unlock button
     }
+  };
+
+  // --- HANDLER PARA EDITAR PEDIDO (Restored) ---
+  const handleEditOrder = (order: Order, items: OrderItem[], neighborhoodName?: string) => {
+    // 1. Confirmar com o usuário se quer sobrescrever o carrinho atual
+    if (cart.length > 0) {
+      if (!confirm("Editar este pedido substituirá os itens atuais do carrinho. Continuar?")) {
+        return;
+      }
+    }
+
+    // 2. Converter OrderItems para CartItems
+    // 2. Converter OrderItems para CartItems
+    const newCartItems: CartItem[] = items.map(item => {
+      // FORCE CAST: The joined data exists at runtime but TS definitions might be missing 'products'
+      const productData = (item as any).products || (item as any).product;
+
+      return {
+        tempId: crypto.randomUUID(),
+        product: {
+          id: item.product_id,
+          name: productData?.name || 'Produto Desconhecido',
+          price: item.unit_price,
+          category: productData?.category || 'Outros',
+          image_url: productData?.image_url,
+          description: productData?.description,
+          menu_number: productData?.menu_number || 0,
+          is_available: true
+        },
+        quantity: item.quantity,
+        notes: item.notes || '',
+        addons: (item as any).addons_detail || [],
+        tags: []
+      };
+    });
+
+    // 3. Atualizar Estado do Carrinho
+    setCart(newCartItems);
+    setCustomerName(order.customer_name || '');
+
+    // 4. Tentar recuperar o bairro (se possível)
+    if (order.neighborhood_id) {
+      const foundNeigh = neighborhoods.find(n => n.id === order.neighborhood_id);
+      if (foundNeigh) {
+        // Logica para setar bairro se houvesse estado (atualmente setNeighborhood no sidebar)
+        // Isso pode requerer passar o bairro inicial para o CartSidebar
+      }
+    }
+
+    // 5. Fechar Modal de Histórico e Feedback
+    setIsHistoryOpen(false);
+    toast.success(`Pedido #${order.daily_number} carregado para edição!`);
   };
 
   const handleReprint = (order: Order, items: OrderItem[], neighborhoodName: string) => {
@@ -794,17 +905,49 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
     }
   };
 
-  // Lógica de Filtro e Busca
-  const filteredProducts = products.filter(p => {
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    const searchLower = searchQuery.toLowerCase();
-    const matchesSearch =
-      p.name.toLowerCase().includes(searchLower) ||
-      (p.menu_number && p.menu_number.toString() === searchLower); // Busca exata por número
 
-    return matchesCategory && matchesSearch;
-  });
 
+  // --- FILTER LOGIC (Restored) ---
+  // 1. Extract Unique Categories for the Menu (Stable List)
+  const allCategories = React.useMemo(() => {
+    const cats = new Set(products.map(p => p.category || 'Outros'));
+    return Array.from(cats).sort();
+  }, [products]);
+
+  const filteredProducts = React.useMemo(() => {
+    return products.filter(product => {
+      // 1. Search Filter
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch =
+        product.name.toLowerCase().includes(searchLower) ||
+        product.description?.toLowerCase().includes(searchLower) ||
+        (product.code && product.code.toLowerCase().includes(searchLower));
+
+      // 2. Category Filter
+      const matchesCategory =
+        selectedCategory === 'all' ||
+        product.category === selectedCategory ||
+        product.category_id === selectedCategory;
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategory]);
+
+  // Agrupamento de Produtos para o Grid
+  const groupedProducts = React.useMemo(() => {
+    const groups: Record<string, Product[]> = {};
+    filteredProducts.forEach(product => {
+      const cat = product.category || 'Outros';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(product);
+    });
+    return groups;
+  }, [filteredProducts]);
+
+  const handleProductClick = (product: Product) => {
+    setSelectedProduct(product);
+    setIsModalOpen(true);
+  };
 
   // RENDERIZAR: CARREGANDO
   if (loadingShift) {
@@ -815,31 +958,20 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
     );
   }
 
-  // Placeholder para edição
-  const handleEditOrder = (order: any) => {
-    const newNote = prompt("Editar Observação do Pedido #" + order.daily_number, order.notes || "");
-    if (newNote !== null) {
-      supabase.from('orders').update({ notes: newNote }).eq('id', order.id).then(({ error }) => {
-        if (error) toast.error("Erro ao atualizar");
-        else toast.success("Observação atualizada");
-      });
-    }
-  };
-
   // RENDERIZAR: ABRIR CAIXA (SEM TURNO ATIVO)
   if (!currentShift) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 p-4 transition-colors">
         {onBackToAdmin && (
-          <button onClick={onBackToAdmin} className="absolute top-4 left-4 flex items-center gap-2 text-gray-500 hover:text-gray-800">
+          <button onClick={onBackToAdmin} className="absolute top-4 left-4 flex items-center gap-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white">
             <ArrowLeft size={20} /> Voltar
           </button>
         )}
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-6">
+        <div className="bg-white dark:bg-[#1C1C1E] p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-6 border border-gray-200 dark:border-white/10">
           <div className="w-40 h-40 mx-auto mb-4">
             <img src="/card_logo.png" alt="Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">MasterPedidos</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">MasterPedidos</h1>
 
           {!showOpenInput ? (
             <>
@@ -855,7 +987,7 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
           ) : (
             <div className="space-y-4 animate-fade-in">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 text-left">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-left">
                   Valor Inicial (Fundo de Troco)
                 </label>
                 <div className="relative">
@@ -866,7 +998,7 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
                     min="0"
                     value={floatInput}
                     onChange={(e) => setFloatInput(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#BB080E] outline-none text-lg text-gray-900"
+                    className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-white/10 dark:bg-[#2C2C2E] dark:text-white rounded-lg focus:ring-2 focus:ring-[#BB080E] outline-none text-lg text-gray-900"
                     placeholder="0.00"
                     autoFocus
                     onKeyPress={(e) => {
@@ -880,7 +1012,7 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowOpenInput(false)}
-                  className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors"
+                  className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-colors"
                 >
                   Cancelar
                 </button>
@@ -898,538 +1030,552 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
     );
   }
 
-  // RENDERIZAR: INTERFACE PDV
-  return <div className={`${isDarkMode ? 'dark' : ''}`}>
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden font-sans transition-colors duration-300">
-      {/* Sidebar de Histórico (Esquerda) */}
+  // RENDERIZAR: INTERFACE PDV HUB LAYOUT
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col lg:flex-row lg:h-screen lg:overflow-hidden dark">
 
+      {/* 🟢 LEFT PANEL: Products & Navigation */}
+      <div className="flex-1 flex flex-col h-full lg:overflow-y-auto custom-scrollbar relative bg-black">
 
-
-
-      <CartSidebar
-        cart={cart}
-        neighborhoods={neighborhoods}
-        onRemoveItem={(tempId) => setCart(prev => prev.filter(i => i.tempId !== tempId))}
-        onCheckout={handleCheckout}
-        isLoading={isProcessing}
-        customerName={customerName}
-        setCustomerName={setCustomerName}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-      />
-
-      {/* Modals Necessários */}
-      {isModalOpen && selectedProduct && (
-        <ProductModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          product={selectedProduct}
-          availableAddons={addons}
-          onAddToCart={(item) => {
-            setCart([...cart, item]);
-            setIsModalOpen(false);
-            // Dynamic Island Toast
-            setShowToast(true);
-            setTimeout(() => setShowToast(false), 2000);
-          }}
-        />
-      )}
-
-      {/* Dynamic Island Toast (igual Cardapio.tsx) */}
-      {showToast && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] animate-slide-down pointer-events-none w-full max-w-[350px] flex justify-center md:hidden">
-          <div className="bg-black border border-white/10 rounded-full px-5 py-3 shadow-2xl flex items-center gap-3">
-            <div className="bg-[#FFCC00] rounded-full p-1">
-              <Check size={14} className="text-black stroke-[3px]" />
-            </div>
-            <span className="text-white text-sm font-semibold tracking-wide">Item adicionado à sacola</span>
-          </div>
-        </div>
-      )}
-
-      {/* POS Navigation Fixed (Mobile Only) */}
-      <div className="md:hidden">
-        <POSNavigation
-          cartCount={cart.length}
-          onSearch={(query) => setSearchQuery(query)}
-          onCategorySelect={(cat) => setSelectedCategory(cat)}
-          onOpenCart={() => setIsSidebarOpen(true)}
-          selectedCategory={selectedCategory}
-        />
-      </div>
-
-      {/* --- MODAL DE SUCESSO / IMPRESSÃO --- */}
-      {shouldPrint && lastOrderNumber && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-            <div className="bg-green-500 p-8 text-center">
-              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-3xl font-black text-white mb-1">Pedido #{lastOrderNumber}</h2>
-              <p className="text-green-100 font-medium">Registrado com Sucesso!</p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-center">
-                <p className="text-blue-800 dark:text-blue-300 font-semibold">
-                  🖨️ Pedido enviado para impressão automática!
-                </p>
-                <p className="text-blue-600 dark:text-blue-400 text-sm mt-1">
-                  O recibo será impresso automaticamente no servidor
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShouldPrint(false)}
-                className="w-full py-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                Novo Pedido
-              </button>
-            </div>
-
-
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL DE ALERTA PEDIDO WEB --- */}
-      {webOrderAlert && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-5 text-center">
-              <div className="text-3xl mb-1">📱</div>
-              <h2 className="text-xl font-bold text-white">Novo Pedido Web!</h2>
-            </div>
-            <div className="p-5 space-y-4">
-              {/* Cliente */}
-              <div className="text-center">
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{webOrderAlert.customer_name}</p>
-                <p className="text-gray-500 dark:text-gray-400">📞 {webOrderAlert.customer_phone}</p>
-              </div>
-
-              {/* Tipo e Pagamento */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className={`p-3 rounded-xl text-center font-bold ${webOrderAlert.order_type === 'delivery' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'}`}>
-                  {webOrderAlert.order_type === 'delivery' ? '🛵 Entrega' : '🏪 Retirada'}
-                </div>
-                <div className={`p-3 rounded-xl text-center font-bold ${webOrderAlert.payment_method === 'pix' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                  webOrderAlert.payment_method === 'cash' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
-                    'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                  }`}>
-                  {webOrderAlert.payment_method === 'pix' ? '📱 Pix' : webOrderAlert.payment_method === 'cash' ? '💵 Dinheiro' : '💳 Cartão'}
+        {/* Header Fixo Desktop */}
+        <header className="sticky top-0 z-30 bg-[#1C1C1E]/80 backdrop-blur-md border-b border-white/10 px-4 py-3 flex items-center justify-between shrink-0 h-[60px]">
+          <div className="flex items-center gap-3">
+            {/* Mobile: Menu ou Voltar */}
+            <div className="md:hidden flex items-center gap-3">
+              <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain" />
+              <div className="flex flex-col">
+                <h1 className="text-sm font-bold text-white tracking-tight leading-none">
+                  MasterCheff <span className="text-[#FFCC00]">POS</span>
+                </h1>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${currentShift ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    {currentShift ? 'ABERTO' : 'FECHADO'}
+                  </span>
                 </div>
               </div>
+            </div>
 
-              {/* Total */}
-              <div className="py-3 border-t border-b border-gray-200 dark:border-gray-700 text-center">
-                <p className="text-3xl font-bold text-green-600">R$ {webOrderAlert.total.toFixed(2)}</p>
-              </div>
+            {/* Desktop: Navigation Controls */}
+            <div className="hidden md:flex items-center gap-3">
+              {user?.role === 'admin' && onBackToAdmin ? (
+                <button onClick={onBackToAdmin} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Painel Admin">
+                  <LayoutDashboard size={20} className="text-gray-400 hover:text-white" />
+                </button>
+              ) : (
+                <button onClick={onLogout} className="p-2 hover:bg-white/10 rounded-full transition-colors" title="Sair">
+                  <LogOut size={20} className="text-gray-400" />
+                </button>
+              )}
 
-              {/* Botões */}
-              <div className="flex gap-3">
-                <button
-                  onClick={rejectWebOrder}
-                  className="flex-1 py-3 bg-gray-100 hover:bg-red-100 text-gray-700 hover:text-red-700 rounded-xl font-bold transition-colors dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-red-400"
-                >
-                  ❌ Rejeitar
-                </button>
-                <button
-                  onClick={acceptWebOrder}
-                  className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold shadow-lg transition-all transform hover:scale-105"
-                >
-                  ✅ Aceitar
-                </button>
+              <div>
+                <h1 className="text-lg font-bold text-white tracking-tight leading-none">
+                  MasterCheff <span className="text-[#FFCC00]">POS</span>
+                </h1>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${currentShift ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse' : 'bg-red-500'}`}></div>
+                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
+                    {currentShift ? `Cx. Aberto` : 'Cx. Fechado'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
 
-      <div className="flex-1 flex flex-col h-full min-w-0 no-print relative bg-black">
-
-        {/* MOBILE HEADER - Mirror Mode (Fixed, igual Cardapio.tsx) */}
-        <header className="md:hidden fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b border-white/5">
-          <div className="container mx-auto px-4 pt-6 pb-3 flex flex-col items-center justify-center gap-1 relative">
-            <img
-              src="/logo.png"
-              alt="Mastercheff"
-              className="w-14 h-14 object-contain"
-            />
-            <h1 className="font-bold text-white tracking-wide uppercase text-xs text-center">
-              Mastercheff POS
-            </h1>
-            {/* Status Dot (absolute left) */}
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-              <div className={`w-2.5 h-2.5 rounded-full ${currentShift?.status === 'open' ? 'bg-green-500 shadow-[0_0_10px_#22c55e] animate-pulse' : 'bg-red-500'}`} />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
-                {currentShift?.status === 'open' ? 'Aberto' : 'Fechado'}
-              </span>
-            </div>
-            {/* Botões (absolute right) */}
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Quick Actions (Desktop) */}
+            <div className="hidden md:flex items-center gap-2">
+              {user?.role === 'admin' && (
+                <button
+                  onClick={handleCloseShiftClick}
+                  className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold rounded-lg transition-colors border border-red-500/20"
+                >
+                  Fechar Caixa
+                </button>
+              )}
               <button
                 onClick={() => setIsHistoryOpen(true)}
-                className="w-9 h-9 bg-[#1C1C1E] rounded-full flex items-center justify-center text-white/60 hover:text-white transition-colors border border-white/10"
-                title="Histórico de Pedidos"
+                className="p-2 bg-[#2C2C2E] rounded-lg text-gray-400 hover:text-white transition-colors"
+                title="Histórico"
               >
-                <History size={16} />
-              </button>
-              <button
-                onClick={handleClearPrintQueue}
-                className="w-9 h-9 bg-red-500/10 rounded-full flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors border border-red-500/20"
-                title="Zerar Fila de Impressão"
-              >
-                <AlertTriangle size={16} />
-              </button>
-              <button
-                onClick={async () => {
-                  if (confirm("Deseja realmente sair?")) {
-                    await supabase.auth.signOut();
-                    window.location.reload();
-                  }
-                }}
-                className="w-9 h-9 bg-[#1C1C1E] rounded-full flex items-center justify-center text-red-500/70 hover:text-red-500 transition-colors border border-white/10"
-                title="Sair"
-              >
-                <LogOut size={16} />
+                <History size={18} />
               </button>
             </div>
-          </div>
-        </header>
 
-        {/* Spacer para Header Mobile Fixo */}
-        <div className="h-28 md:hidden" />
-
-        {/* Background Decorativo */}
-        <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-[#1C1C1E]/50 to-transparent pointer-events-none z-0"></div>
-
-        {/* Barra Superior - DESKTOP ONLY */}
-        <header className="hidden md:flex relative z-10 px-8 py-6 flex-row justify-between items-center gap-4 shrink-0 backdrop-blur-xl bg-black/60 border-b border-white/10 sticky top-0">
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            {onBackToAdmin && user?.role === 'admin' && (
-              <button onClick={onBackToAdmin} className="w-10 h-10 bg-[#1C1C1E] rounded-2xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-[#2C2C2E] transition-all" title="Voltar ao Admin">
-                <ArrowLeft size={20} />
-              </button>
-            )}
-            <div>
-              <h1 className="font-bold text-2xl text-white leading-none tracking-tight">MasterPedidos</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Caixa Aberto</span>
-              </div>
-            </div>
-            {/* Kill Switch Desktop */}
-            <button
-              onClick={handleClearPrintQueue}
-              className="ml-4 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all"
-              title="Emergência: Zerar Fila"
-            >
-              <AlertTriangle size={12} />
-              Zerar Fila
-            </button>
-          </div>
-
-          {/* Barra de Pesquisa Centralizada */}
-          <div className="flex-1 max-w-md w-full mx-4">
-            <div className="relative group">
+            {/* Search Bar - Desktop Only Here */}
+            <div className="relative hidden lg:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
               <input
                 type="text"
-                placeholder="Buscar por nome ou codigo..."
-                className="w-full pl-12 pr-4 py-3 bg-[#1C1C1E] border-none rounded-2xl text-white placeholder-gray-500 focus:ring-2 focus:ring-[#FFCC00] outline-none transition-all"
+                placeholder="Buscar produto (F3)..."
+                className="bg-[#2C2C2E] border border-white/10 rounded-full pl-9 pr-4 py-1.5 text-sm focus:ring-2 focus:ring-[#FFCC00] outline-none w-48 transition-all focus:w-64"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-hover:text-[#FFCC00] transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 w-full md:w-auto justify-end">
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="w-10 h-10 bg-[#1C1C1E] rounded-2xl flex items-center justify-center text-gray-400 hover:text-[#FFCC00] hover:bg-[#2C2C2E] transition-all active:scale-95"
-              title="Alternar Tema"
-            >
-              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
+          {/* Mobile: Settings Trigger */}
+          <button
+            className="md:hidden p-2 text-gray-400 hover:text-white"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          >
+            <Settings size={22} />
+          </button>
 
-            <button
-              onClick={() => setIsHistoryOpen(true)}
-              className="flex items-center gap-2 bg-[#1C1C1E] text-gray-400 hover:text-white hover:bg-[#2C2C2E] font-semibold text-sm px-4 py-3 rounded-2xl transition-all active:scale-95"
-            >
-              <History size={18} />
-              <span className="hidden sm:inline">Historico</span>
-            </button>
-
-            {/* Live Status Indicator - AUTOMATED */}
-            <div className={`hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl border ${currentShift?.status === 'open'
-              ? 'bg-emerald-500/10 border-emerald-500/20'
-              : 'bg-red-500/10 border-red-500/20'}`}>
-              <div className={`w-2 h-2 rounded-full ${currentShift?.status === 'open' ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_#10B981]' : 'bg-red-500'}`} />
-              <span className={`text-[10px] font-bold tracking-wider ${currentShift?.status === 'open' ? 'text-emerald-500' : 'text-red-500'}`}>
-                {currentShift?.status === 'open' ? 'LOJA ONLINE' : 'OFFLINE'}
-              </span>
-            </div>
-
-            <div className="text-right hidden sm:block bg-[#1C1C1E] px-4 py-2 rounded-2xl border border-white/10">
-              <p className="font-semibold text-white text-sm">{user.email}</p>
-              <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{user.role === 'admin' ? 'Admin' : 'Caixa'}</p>
-            </div>
-
-            {user?.role?.toLowerCase() === 'admin' && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseShiftClick();
-                }}
-                className="relative z-50 text-gray-400 hover:text-red-400 flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-2xl hover:bg-red-600/20 transition-colors"
-                title="Fechar Caixa"
-              >
-                <LogOut size={18} />
-                <span className="hidden md:inline">Fechar Caixa</span>
-              </button>
-            )}
-
-
-            {/* Botão de Logout Universal - Visível para todos */}
-            <button
-              onClick={async () => {
-                if (confirm("Deseja realmente sair?")) {
-                  await supabase.auth.signOut();
-                  window.location.reload();
-                }
-              }}
-              className="text-gray-400 hover:text-red-400 hover:bg-red-600/20 p-2 rounded-2xl transition-colors flex items-center gap-2"
-              title="Sair do Sistema"
-            >
-              <LogOut size={20} />
-              <span className="hidden md:inline font-semibold">Sair</span>
-            </button>
-          </div>
         </header>
 
-        {/* Categorias - DESKTOP ONLY (e mobile apenas como fallback visual se necessário, mas oculta se nav pill ativa) */}
-        <div className="relative z-10 px-8 pb-2 overflow-x-auto whitespace-nowrap shrink-0 scrollbar-hide hidden md:block">
-          <div className="flex gap-3">
-            {[
-              { id: 'all', label: 'Todos' },
-              { id: 'xis', label: 'Xis' },
-              { id: 'hotdog', label: 'Dogs' },
-              { id: 'porcoes', label: 'Porções' },
-              { id: 'bebida', label: 'Bebidas' }
-            ].map((cat) => (
+        {/* 📱 MOBILE MANAGEMENT MENU (Dropdown) */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="md:hidden bg-[#1C1C1E] border-b border-white/10 overflow-hidden"
+            >
+              <div className="p-4 space-y-4">
+                {/* 1. Loja Online Status */}
+                <div className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5">
+                  <div className="flex items-center gap-3">
+                    <Store size={20} className={isStoreOpen ? "text-green-500" : "text-gray-500"} />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-white">Loja Online</span>
+                      <span className="text-[10px] text-gray-400">{isStoreOpen ? 'Recebendo Pedidos' : 'Fechada Temporariamente'}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const newState = !isStoreOpen;
+                      setIsStoreOpen(newState); // Optimistic UI
+                      await toggleStoreStatus(newState);
+                    }}
+                    className={`w-12 h-6 rounded-full p-1 transition-colors ${isStoreOpen ? 'bg-green-500' : 'bg-gray-700'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${isStoreOpen ? 'translate-x-6' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+
+                {/* 2. Actions Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Zerar fila */}
+                  <button
+                    onClick={async () => {
+                      if (confirm("Tem certeza que deseja ZERAR a fila de impressao?")) {
+                        await clearPrintQueue();
+                        toast.success("Fila limpa!");
+                        setIsMobileMenuOpen(false);
+                      }
+                    }}
+                    className="flex flex-col items-center justify-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 active:scale-95 transition-transform"
+                  >
+                    <RefreshCcw size={20} />
+                    <span className="text-xs font-bold">Zerar Fila</span>
+                  </button>
+
+                  {/* Historico */}
+                  <button
+                    onClick={() => { setIsHistoryOpen(true); setIsMobileMenuOpen(false); }}
+                    className="flex flex-col items-center justify-center gap-2 p-3 bg-[#2C2C2E] border border-white/10 rounded-xl text-gray-200 active:scale-95 transition-transform"
+                  >
+                    <History size={20} />
+                    <span className="text-xs font-bold">Histórico</span>
+                  </button>
+                </div>
+
+                {/* 3. Fechar Caixa & Admin */}
+                <div className="flex flex-col gap-2 pt-2">
+                  {user?.role === 'admin' && (
+                    <>
+                      <button
+                        onClick={() => { handleCloseShiftClick(); setIsMobileMenuOpen(false); }}
+                        className="w-full py-3 bg-[#FFCC00] text-black font-bold text-sm rounded-xl shadow-lg active:scale-95 transition-transform"
+                      >
+                        Fechar Caixa
+                      </button>
+
+                      <button
+                        onClick={onBackToAdmin}
+                        className="w-full py-3 bg-white/5 text-gray-300 font-bold text-sm rounded-xl border border-white/10 active:bg-white/10 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <LayoutDashboard size={16} />
+                        Voltar ao Painel
+                      </button>
+                    </>
+                  )}
+                  {user?.role !== 'admin' && (
+                    <button
+                      onClick={onLogout}
+                      className="w-full py-3 bg-red-500/10 text-red-400 font-bold text-sm rounded-xl border border-red-500/20"
+                    >
+                      Sair (Logout)
+                    </button>
+                  )}
+                </div>
+
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+
+
+        <div className="sticky top-[60px] z-20 bg-black pt-2 pb-2 px-4 shadow-lg shrink-0">
+
+          {/* DESKTOP CATEGORY MENU (Horizontal Scroll removed -> Centered & Visible) */}
+          <div className="hidden lg:flex items-center justify-center gap-3 flex-wrap pb-1">
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`relative px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wide whitespace-nowrap transition-colors border ${selectedCategory === 'all'
+                ? 'text-black border-transparent'
+                : 'bg-[#2C2C2E] text-gray-400 border-white/10 hover:bg-white/10 hover:text-white'
+                }`}
+            >
+              <span className="relative z-10">Todos</span>
+              {selectedCategory === 'all' && (
+                <motion.div
+                  layoutId="active-category"
+                  className="absolute inset-0 bg-[#FFCC00] rounded-full z-0 shadow-lg"
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                />
+              )}
+            </button>
+            {/* Dynamic Categories from Grouped Products */}
+            {allCategories.map(cat => (
               <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 active:scale-95 ${selectedCategory === cat.id
-                  ? 'bg-[#FFCC00] text-black'
-                  : 'bg-[#1C1C1E] text-gray-400 hover:bg-[#2C2C2E] hover:text-white border border-white/10'
+                key={cat}
+                onClick={() => {
+                  setSelectedCategory(cat);
+                  // Optional: Smooth scroll to section
+                  document.getElementById(`category-${cat}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className={`relative px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wide whitespace-nowrap transition-colors border ${selectedCategory === cat
+                  ? 'text-black border-transparent'
+                  : 'bg-[#2C2C2E] text-gray-400 border-white/10 hover:bg-white/10 hover:text-white'
                   }`}
               >
-                {cat.label}
+                <span className="relative z-10">{cat}</span>
+                {selectedCategory === cat && (
+                  <motion.div
+                    layoutId="active-category"
+                    className="absolute inset-0 bg-[#FFCC00] rounded-full z-0 shadow-lg"
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  />
+                )}
               </button>
             ))}
           </div>
+
+
         </div>
 
-        {/* Grade - Mobile: max-w-2xl com animações, Desktop: grid normal */}
-        <div className="flex-1 overflow-y-auto p-4 pb-32 md:p-8 md:pb-8 relative z-10">
-          {/* Mobile Grid com Framer Motion */}
-          <motion.div
-            layout
-            className="flex flex-col md:grid md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 md:gap-6 max-w-2xl mx-auto md:max-w-none"
-          >
-            <AnimatePresence mode="popLayout">
-              {filteredProducts.map(product => (
-                <motion.div
-                  key={product.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2 }}
-                  layout
-                >
-                  <ProductCard
-                    product={product}
-                    onClick={(p) => {
-                      setSelectedProduct(p);
-                      setIsModalOpen(true);
-                    }}
-                  />
-                </motion.div>
+        {/* Product Grid Area */}
+        <main className="p-4 flex-1">
+          {Object.keys(groupedProducts).length === 0 ? (
+            <div className="text-center py-20 opacity-50">
+              <div className="mx-auto w-16 h-16 bg-[#2C2C2E] rounded-full flex items-center justify-center mb-4">
+                <Search size={24} className="text-gray-500" />
+              </div>
+              <p className="text-gray-400">Nenhum produto encontrado.</p>
+            </div>
+          ) : (
+            <>
+              {Object.keys(groupedProducts).map((category) => (
+                <div key={category} id={`category-${category}`} className="mb-8 scroll-mt-32">
+                  {/* Sticky Section Header */}
+                  <div className="sticky top-[60px] lg:top-[110px] z-40 mb-4 py-2 bg-black -mx-4 px-4 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold px-2 py-1 bg-[#FFCC00] text-black rounded uppercase tracking-wider shadow-glow">
+                        {category}
+                      </span>
+                      <div className="h-px bg-white/10 flex-1"></div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                    {groupedProducts[category].map((product) => {
+                      const stockStatus = checkProductAvailability(
+                        ingredientsMap[product.id] || [],
+                        stockMap
+                      );
+                      return (
+                        <ProductCard
+                          key={product.id}
+                          product={product}
+                          onClick={() => handleProductClick(product)}
+                          stockStatus={stockStatus}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
-            </AnimatePresence>
-          </motion.div>
+            </>
+          )}
+
+          {/* Extra space for mobile FAB */}
+          <div className="h-24 lg:h-8"></div>
+        </main>
+      </div>
+
+      {/* 🔵 RIGHT PANEL: Cart Sidebar (Always Visible on Desktop) */}
+      <div className="hidden lg:block w-[400px] xl:w-[450px] border-l border-white/10 bg-[#1C1C1E] relative z-20 shrink-0 h-full">
+        <div className="h-full">
+          <CartSidebar
+            isOpen={true}
+            onClose={() => { }} // No-op on desktop
+            cart={cart}
+            neighborhoods={neighborhoods}
+            onRemoveItem={removeFromCart}
+            onCheckout={handleCheckout}
+            isLoading={isProcessing || isSubmitting}
+            customerName={customerName}
+            setCustomerName={setCustomerName}
+          />
         </div>
       </div>
 
-      {/* --- ÁREA DIREITA: Barra Lateral do Carrinho (Desktop) --- */}
-      <div className="hidden md:block w-[400px] shrink-0 h-full no-print relative z-20">
-        <CartSidebar
-          cart={cart}
-          neighborhoods={neighborhoods}
-          onRemoveItem={removeFromCart}
-          onCheckout={handleCheckout}
-          isLoading={isProcessing}
-          customerName={customerName}
-          setCustomerName={setCustomerName}
+      {/* 🟠 MOBILE ONLY ELEMENTS */}
+      <div className="lg:hidden">
+        <POSNavigation
+          selectedCategory={selectedCategory}
+          onCategorySelect={setSelectedCategory}
+          cartCount={cart.length}
+          onOpenCart={() => setIsSidebarOpen(true)}
+          onSearch={(q) => setSearchQuery(q)}
         />
+        {/* Floating Cart Button (Mobile Only - Legacy/Backup) */}
+        <AnimatePresence>
+          {
+            cart.length > 0 && !isSidebarOpen && (
+              <motion.button
+                initial={{ scale: 0, rotate: 180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                exit={{ scale: 0, rotate: 180 }}
+                onClick={() => setIsSidebarOpen(true)}
+                className="fixed bottom-6 right-6 w-16 h-16 bg-[#FFCC00] rounded-full shadow-[0_4px_20px_rgba(255,204,0,0.4)] flex items-center justify-center z-40 md:bottom-8 md:right-8 active:scale-90 transition-transform"
+              >
+                <ShoppingCart className="text-black" size={28} />
+                <span className="absolute -top-1 -right-1 w-6 h-6 bg-red-600 text-white text-xs font-bold flex items-center justify-center rounded-full border-2 border-black">
+                  {cart.length}
+                </span>
+              </motion.button>
+            )
+          }
+        </AnimatePresence >
+
+        {/* Mobile Cart Sidebar (Drawer) */}
+        <div className="relative z-50">
+          <CartSidebar
+            isOpen={isSidebarOpen}
+            onClose={() => setIsSidebarOpen(false)}
+            cart={cart}
+            neighborhoods={neighborhoods}
+            onRemoveItem={removeFromCart}
+            onCheckout={handleCheckout}
+            isLoading={isProcessing || isSubmitting}
+            customerName={customerName}
+            setCustomerName={setCustomerName}
+          />
+        </div>
       </div>
 
-      {/* --- GAVETA LATERAL MÓVEL --- */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 z-50 md:hidden no-print">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setIsSidebarOpen(false)}></div>
-          <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-white dark:bg-gray-800 shadow-2xl animate-slide-in-right">
-            <div className="h-full flex flex-col">
-              <div className="flex justify-between items-center p-4 border-b border-gray-100 dark:border-gray-700">
-                <h2 className="font-bold text-lg text-gray-900 dark:text-white">Carrinho</h2>
-                <button onClick={() => setIsSidebarOpen(false)} className="w-8 h-8 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
-                  <LogOut className="rotate-180 text-gray-500 dark:text-gray-400" size={18} />
-                </button>
+      {/* ⚪ SHARED MODALS & TOASTS */}
+
+      {/* Product Modal */}
+      <AnimatePresence>
+        {isModalOpen && selectedProduct && (
+          <ProductModal
+            isOpen={isModalOpen}
+            onClose={() => setIsModalOpen(false)}
+            product={selectedProduct}
+            onAddToCart={(item) => {
+              addToCart(item);
+              setIsModalOpen(false);
+              setShowToast(true);
+              setTimeout(() => setShowToast(false), 2000);
+            }}
+            availableAddons={addons}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Dynamic Island Toast */}
+      {
+        showToast && (
+          <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[100] animate-slide-down pointer-events-none w-full max-w-[300px] flex justify-center">
+            <div className="bg-black/90 backdrop-blur border border-white/10 rounded-full px-5 py-2 shadow-2xl flex items-center gap-3">
+              <div className="bg-[#FFCC00] rounded-full p-1">
+                <Check size={12} className="text-black stroke-[3px]" />
               </div>
-              <div className="flex-1 min-h-0">
-                <CartSidebar
-                  cart={cart}
-                  neighborhoods={neighborhoods}
-                  onRemoveItem={removeFromCart}
-                  onCheckout={handleCheckout}
-                  isLoading={isProcessing}
-                  customerName={customerName}
-                  setCustomerName={setCustomerName}
-                  isOpen={isSidebarOpen}
-                  onClose={() => setIsSidebarOpen(false)}
-                />
-              </div>
+              <span className="text-white text-xs font-bold tracking-wide">Adicionado!</span>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-
-
+      {/* History Modal */}
       <OrderHistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         shiftId={currentShift?.id || ''}
         onEditOrder={handleEditOrder}
+        onReprint={handleReprint}
       />
 
-      {/* Modal de Resumo do Fechamento */}
-      {showCloseSummary && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-          <div className="bg-[#1C1C1E] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-            <div className="p-8 pb-0 text-center">
-              <h2 className="text-3xl font-bold text-white mb-2">Fechamento de Caixa</h2>
-              <p className="text-gray-400">Resumo do turno atual</p>
-            </div>
+      {/* 
+      <ShiftOrdersSidebar
+        isOpen={false}
+        onClose={() => { }}
+        onReprint={handleReprint}
+        currentShiftId={currentShift?.id}
+      /> 
+      */}
 
-            <div className="p-8 space-y-6">
-
-              {/* Saldo Principal */}
-              <div className="text-center mb-8">
-                <p className="text-gray-400 text-sm uppercase tracking-wide mb-2">Faturamento Total do Turno</p>
-                <div className="text-[#FFCC00] text-5xl font-bold tracking-tighter">
-                  R$ {(shiftStats.total || 0).toFixed(2)}
+      {/* --- MODAL DE SUCESSO / IMPRESSÃO --- */}
+      {
+        shouldPrint && lastOrderNumber && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+              <div className="bg-green-500 p-8 text-center">
+                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                  <Check size={40} className="text-green-500" strokeWidth={3} />
                 </div>
+                <h2 className="text-3xl font-black text-white mb-1">Pedido #{lastOrderNumber}</h2>
+                <p className="text-green-100 font-medium">Registrado com Sucesso!</p>
               </div>
 
-              {/* Lista de Detalhes */}
-              <div className="space-y-2">
-                <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center">
-                  <span className="text-white font-medium">🛒 Vendas (Produtos)</span>
-                  <span className="text-white font-bold">R$ {((shiftStats.total || 0) - (shiftStats.deliveryFees || 0)).toFixed(2)}</span>
+              <div className="p-6 space-y-4">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-center">
+                  <p className="text-blue-800 dark:text-blue-300 font-semibold">
+                    🖨️ Pedido enviado para impressão!
+                  </p>
                 </div>
 
-                <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center border border-orange-500/20">
-                  <span className="text-orange-400 font-medium">🛵 Taxas Motoboy</span>
-                  <span className="text-orange-400 font-bold">R$ {(shiftStats.deliveryFees || 0).toFixed(2)}</span>
-                </div>
-
-                <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center border border-green-500/20">
-                  <span className="text-green-400 font-medium">💵 Total em Dinheiro</span>
-                  <span className="text-green-400 font-bold">R$ {((currentShift?.initial_float || 0) + (shiftStats.cash || 0)).toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* 📊 SUB-RELATÓRIO DE NUMERÁRIO (Novo) */}
-              <div className="bg-[#1C1C1E] rounded-2xl p-4 border border-white/10 space-y-2">
-                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">📊 Resumo de Numerário</h3>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Troco Inicial</span>
-                  <span className="text-white">R$ {(currentShift?.initial_float || 0).toFixed(2)}</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Vendas em Dinheiro (+)</span>
-                  <span className="text-green-400 font-medium">R$ {(shiftStats.cash || 0).toFixed(2)}</span>
-                </div>
-
-                <div className="h-px bg-white/10 my-1"></div>
-
-                <div className="flex justify-between text-base font-bold">
-                  <span className="text-white">Total na Gaveta (=)</span>
-                  <span className="text-[#FFCC00]">R$ {((currentShift?.initial_float || 0) + (shiftStats.cash || 0)).toFixed(2)}</span>
-                </div>
-              </div>
-
-              {/* Auditoria de Cancelados */}
-              {shiftStats.canceledOrders.length > 0 && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 mt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-red-400 font-bold flex items-center gap-2">
-                      🚫 Auditoria de Cancelados
-                    </h3>
-                    <span className="text-red-400 font-bold">R$ {shiftStats.canceledTotal.toFixed(2)}</span>
-                  </div>
-                  <div className="max-h-32 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
-                    {shiftStats.canceledOrders.map(order => (
-                      <div key={order.id} className="text-xs text-red-300/80 flex justify-between">
-                        <span>#{order.daily_number} - {order.customer_name}</span>
-                        <span>R$ {order.total.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Botões */}
-              <div className="flex flex-col gap-3 mt-6 pt-4 border-t border-white/5">
                 <button
-                  onClick={handleSendReportToWhatsApp}
-                  className="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
+                  onClick={() => setShouldPrint(false)}
+                  className="w-full py-4 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                 >
-                  <span>📱 Enviar Relatório WhatsApp</span>
+                  Novo Pedido
                 </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
 
-                <div className="grid grid-cols-2 gap-3">
+      {/* Modal de Resumo do Fechamento */}
+      {
+        showCloseSummary && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <div className="bg-[#1C1C1E] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+              <div className="p-8 pb-0 text-center">
+                <h2 className="text-3xl font-bold text-white mb-2">Fechamento de Caixa</h2>
+                <p className="text-gray-400">Resumo do turno atual</p>
+              </div>
+
+              <div className="p-8 space-y-6">
+
+                {/* Saldo Principal */}
+                <div className="text-center mb-8">
+                  <p className="text-gray-400 text-sm uppercase tracking-wide mb-2">Faturamento Total do Turno</p>
+                  <div className="text-[#FFCC00] text-5xl font-bold tracking-tighter">
+                    R$ {(shiftStats.total || 0).toFixed(2)}
+                  </div>
+                </div>
+
+                {/* Lista de Detalhes */}
+                <div className="space-y-2">
+                  <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center">
+                    <span className="text-white font-medium">🛒 Vendas (Produtos)</span>
+                    <span className="text-white font-bold">R$ {((shiftStats.total || 0) - (shiftStats.deliveryFees || 0)).toFixed(2)}</span>
+                  </div>
+
+                  <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center border border-orange-500/20">
+                    <span className="text-orange-400 font-medium">🛵 Taxas Motoboy</span>
+                    <span className="text-orange-400 font-bold">R$ {(shiftStats.deliveryFees || 0).toFixed(2)}</span>
+                  </div>
+
+                  <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center border border-green-500/20">
+                    <span className="text-green-400 font-medium">💵 Total em Dinheiro</span>
+                    <span className="text-green-400 font-bold">R$ {((currentShift?.initial_float || 0) + (shiftStats.cash || 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* 📊 SUB-RELATÓRIO DE NUMERÁRIO (Novo) */}
+                <div className="bg-[#1C1C1E] rounded-2xl p-4 border border-white/10 space-y-2">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">📊 Resumo de Numerário</h3>
+
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Troco Inicial</span>
+                    <span className="text-white">R$ {(currentShift?.initial_float || 0).toFixed(2)}</span>
+                  </div>
+
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Vendas em Dinheiro (+)</span>
+                    <span className="text-green-400 font-medium">R$ {(shiftStats.cash || 0).toFixed(2)}</span>
+                  </div>
+
+                  <div className="h-px bg-white/10 my-1"></div>
+
+                  <div className="flex justify-between text-base font-bold">
+                    <span className="text-white">Total na Gaveta (=)</span>
+                    <span className="text-[#FFCC00]">R$ {((currentShift?.initial_float || 0) + (shiftStats.cash || 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Auditoria de Cancelados */}
+                {shiftStats.canceledOrders.length > 0 && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 mt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-red-400 font-bold flex items-center gap-2">
+                        🚫 Auditoria de Cancelados
+                      </h3>
+                      <span className="text-red-400 font-bold">R$ {shiftStats.canceledTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="max-h-32 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
+                      {shiftStats.canceledOrders.map(order => (
+                        <div key={order.id} className="text-xs text-red-300/80 flex justify-between">
+                          <span>#{order.daily_number} - {order.customer_name}</span>
+                          <span>R$ {order.total.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões */}
+                <div className="flex flex-col gap-3 mt-6 pt-4 border-t border-white/5">
                   <button
-                    onClick={() => setShowCloseSummary(false)}
-                    className="w-full py-3 bg-transparent border border-white/10 text-gray-400 hover:text-white font-medium rounded-2xl hover:bg-white/5 transition-all text-sm"
+                    onClick={handleSendReportToWhatsApp}
+                    className="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
                   >
-                    Voltar
+                    <span>📱 Enviar Relatório WhatsApp</span>
                   </button>
-                  <button
-                    onClick={confirmCloseShift}
-                    className="w-full py-3 bg-[#FFCC00] hover:bg-[#E5B800] text-black font-bold rounded-2xl shadow-lg shadow-[#FFCC00]/20 active:scale-95 transition-all text-sm"
-                  >
-                    Confirmar Fechamento
-                  </button>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setShowCloseSummary(false)}
+                      className="w-full py-3 bg-transparent border border-white/10 text-gray-400 hover:text-white font-medium rounded-2xl hover:bg-white/5 transition-all text-sm"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={confirmCloseShift}
+                      className="w-full py-3 bg-[#FFCC00] hover:bg-[#E5B800] text-black font-bold rounded-2xl shadow-lg shadow-[#FFCC00]/20 active:scale-95 transition-all text-sm"
+                    >
+                      Confirmar Fechamento
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
 
-    {/* Animações CSS customizadas */}
-    <style>{`
+      {/* Animações CSS customizadas */}
+      <style>{`
         @keyframes slide-down {
           from { opacity: 0; transform: translateY(-20px); }
           to { opacity: 1; transform: translateY(0); }
@@ -1445,6 +1591,6 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
           animation: scale-in 0.3s ease-out;
         }
       `}</style>
-  </div >
-
+    </div >
+  );
 };

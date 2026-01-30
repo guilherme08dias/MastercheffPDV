@@ -109,54 +109,60 @@ export const DeliverySettings: React.FC = () => {
         <div className="bg-[#1C1C1E] rounded-xl shadow-lg p-6 animate-fade-in border border-white/10">
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h2 className="text-xl font-bold text-white">🛵 Taxas de Entrega por Bairro</h2>
-                    <p className="text-gray-400 text-sm">Gerencie os valores de frete para cada região.</p>
+                    <h2 className="text-lg md:text-xl font-bold text-white flex items-center gap-2">
+                        🛵 Logística de Entrega
+                    </h2>
+                    <p className="text-gray-400 text-xs md:text-sm">Gerencie taxas e áreas de antrega.</p>
                 </div>
                 <button
                     onClick={() => setIsAdding(true)}
-                    className="flex items-center gap-2 bg-[#FFCC00] hover:bg-[#E5B800] text-black px-4 py-2 rounded-lg font-bold transition-colors shadow-lg"
+                    className="flex text-sm md:text-base items-center gap-2 bg-[#FFCC00] hover:bg-[#E5B800] text-black px-3 py-2 md:px-4 md:py-2 rounded-lg font-bold transition-colors shadow-lg"
                 >
-                    <Plus size={20} />
-                    Novo Bairro
+                    <Plus size={18} />
+                    <span className="hidden md:inline">Novo Bairro</span>
+                    <span className="md:hidden">Adicionar</span>
                 </button>
             </div>
 
             {isAdding && (
-                <div className="mb-6 bg-[#2C2C2E] p-4 rounded-xl border border-white/10 flex gap-4 items-end animate-slide-down">
-                    <div className="flex-1">
+                <div className="mb-6 bg-[#2C2C2E] p-4 rounded-xl border border-white/10 flex flex-col md:flex-row gap-4 items-end animate-slide-down">
+                    <div className="w-full md:flex-1">
                         <label className="block text-xs font-bold text-gray-400 mb-1">Nome do Bairro</label>
                         <input
                             type="text"
                             value={newName}
                             onChange={(e) => setNewName(e.target.value)}
-                            className="w-full p-2 rounded-lg border-none bg-[#1C1C1E] text-white focus:outline-none focus:ring-2 focus:ring-[#FFCC00]"
+                            className="w-full p-3 rounded-lg border-none bg-[#1C1C1E] text-white focus:outline-none focus:ring-2 focus:ring-[#FFCC00]"
                             placeholder="Ex: Centro"
                             autoFocus
                         />
                     </div>
-                    <div className="w-32">
+                    <div className="w-full md:w-32">
                         <label className="block text-xs font-bold text-gray-400 mb-1">Taxa (R$)</label>
                         <input
                             type="number"
+                            inputMode="decimal"
                             value={newFee}
                             onChange={(e) => setNewFee(e.target.value)}
-                            className="w-full p-2 rounded-lg border-none bg-[#1C1C1E] text-white focus:outline-none focus:ring-2 focus:ring-[#FFCC00]"
+                            className="w-full p-3 rounded-lg border-none bg-[#1C1C1E] text-white focus:outline-none focus:ring-2 focus:ring-[#FFCC00]"
                             placeholder="0.00"
                         />
                     </div>
-                    <button
-                        onClick={handleAdd}
-                        disabled={!newName || !newFee}
-                        className="p-2.5 bg-green-900/40 text-green-400 rounded-lg hover:bg-green-900/60 disabled:opacity-50 border border-green-500/30"
-                    >
-                        <Check size={20} />
-                    </button>
-                    <button
-                        onClick={() => setIsAdding(false)}
-                        className="p-2.5 bg-red-900/40 text-red-400 rounded-lg hover:bg-red-900/60 border border-red-500/30"
-                    >
-                        <X size={20} />
-                    </button>
+                    <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                        <button
+                            onClick={handleAdd}
+                            disabled={!newName || !newFee}
+                            className="flex-1 md:flex-none p-3 bg-green-900/40 text-green-400 rounded-lg hover:bg-green-900/60 disabled:opacity-50 border border-green-500/30 flex justify-center items-center"
+                        >
+                            <Check size={20} />
+                        </button>
+                        <button
+                            onClick={() => setIsAdding(false)}
+                            className="flex-1 md:flex-none p-3 bg-red-900/40 text-red-400 rounded-lg hover:bg-red-900/60 border border-red-500/30 flex justify-center items-center"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -170,32 +176,33 @@ export const DeliverySettings: React.FC = () => {
                         <p className="text-center text-gray-500 py-10">Nenhum bairro cadastrado.</p>
                     )}
                     {areas.map(area => (
-                        <div key={area.id} className="flex items-center justify-between p-3 bg-[#2C2C2E] rounded-lg hover:bg-[#38383A] transition-colors">
-                            <div className="flex items-center gap-3 flex-1">
+                        <div key={area.id} className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-[#2C2C2E] rounded-xl hover:bg-[#38383A] transition-colors border border-white/5 gap-3">
+                            <div className="flex items-center gap-3 w-full md:w-auto">
                                 <button
                                     onClick={() => handleToggleActive(area.id, area.active)}
-                                    className={`w-10 h-6 rounded-full p-1 transition-colors ${area.active ? 'bg-green-500' : 'bg-gray-600'}`}
+                                    className={`w-12 h-7 rounded-full p-1 transition-colors shrink-0 ${area.active ? 'bg-green-500' : 'bg-gray-600'}`}
                                 >
-                                    <div className={`w-4 h-4 bg-white rounded-full transition-transform ${area.active ? 'translate-x-4' : ''}`}></div>
+                                    <div className={`w-5 h-5 bg-white rounded-full transition-transform shadow-sm ${area.active ? 'translate-x-5' : ''}`}></div>
                                 </button>
-                                <span className={`font-medium text-white ${!area.active && 'opacity-50 line-through'}`}>
+                                <span className={`font-medium text-white text-base md:text-lg flex-1 ${!area.active && 'opacity-50 line-through'}`}>
                                     {area.name}
                                 </span>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end mt-2 md:mt-0 pl-14 md:pl-0">
+                                <div className="flex items-center gap-2 bg-[#1C1C1E] rounded-lg px-3 py-2 border border-white/10 w-full md:w-auto">
                                     <span className="text-gray-400 text-sm">R$</span>
                                     <input
                                         type="number"
+                                        inputMode="decimal"
                                         defaultValue={area.fee}
                                         onBlur={(e) => handleUpdateFee(area.id, parseFloat(e.target.value))}
-                                        className="w-20 bg-transparent font-bold text-right border-b border-gray-600 text-white focus:border-[#FFCC00] outline-none"
+                                        className="w-full md:w-24 bg-transparent font-bold text-right text-white focus:outline-none"
                                     />
                                 </div>
                                 <button
                                     onClick={() => handleDelete(area.id)}
-                                    className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                                    className="p-2.5 bg-red-900/20 text-red-400 hover:bg-red-900/40 rounded-lg transition-colors shrink-0 border border-red-500/10"
                                 >
                                     <Trash2 size={18} />
                                 </button>

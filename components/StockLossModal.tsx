@@ -54,7 +54,7 @@ export const StockLossModal: React.FC<StockLossModalProps> = ({ isOpen, onClose,
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in">
+            <div className="bg-[#1C1C1E] border border-white/10 rounded-2xl shadow-2xl w-full max-w-md animate-scale-in">
                 <div className="bg-red-600 p-6 flex justify-between items-center text-white rounded-t-2xl">
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <AlertOctagon size={24} />
@@ -65,9 +65,9 @@ export const StockLossModal: React.FC<StockLossModalProps> = ({ isOpen, onClose,
 
                 <form onSubmit={handleConfirm} className="p-6 space-y-4">
                     <div>
-                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">Item</label>
+                        <label className="block text-sm font-medium mb-1 text-gray-300">Item</label>
                         <select
-                            className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                            className="w-full p-2 border-none rounded-lg bg-[#2C2C2E] text-white focus:ring-2 focus:ring-[#FFCC00] outline-none"
                             value={selectedItemId}
                             onChange={e => setSelectedItemId(e.target.value)}
                             required
@@ -80,11 +80,11 @@ export const StockLossModal: React.FC<StockLossModalProps> = ({ isOpen, onClose,
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">Quantidade Perdida</label>
+                        <label className="block text-sm font-medium mb-1 text-gray-300">Quantidade Perdida</label>
                         <input
                             type="number"
                             step="0.001"
-                            className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                            className="w-full p-2 border-none rounded-lg bg-[#2C2C2E] text-white focus:ring-2 focus:ring-[#FFCC00] outline-none"
                             value={quantity}
                             onChange={e => setQuantity(e.target.value)}
                             required
@@ -92,9 +92,9 @@ export const StockLossModal: React.FC<StockLossModalProps> = ({ isOpen, onClose,
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium mb-1 dark:text-gray-300">Motivo</label>
+                        <label className="block text-sm font-medium mb-1 text-gray-300">Motivo</label>
                         <select
-                            className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                            className="w-full p-2 border-none rounded-lg bg-[#2C2C2E] text-white focus:ring-2 focus:ring-[#FFCC00] outline-none"
                             value={reason}
                             onChange={e => setReason(e.target.value)}
                         >

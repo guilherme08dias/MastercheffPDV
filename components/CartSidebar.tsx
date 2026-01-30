@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Trash2, ShoppingCart, ChevronDown, ArrowRight, Loader2, User, MapPin, UtensilsCrossed, ShoppingBag, Bike, Banknote, CreditCard, QrCode } from 'lucide-react';
+import { Trash2, ShoppingCart, ChevronDown, ArrowRight, Loader2, User, MapPin, UtensilsCrossed, ShoppingBag, Bike, Banknote, CreditCard, QrCode, X } from 'lucide-react';
 import { CartItem, Neighborhood, OrderType, PaymentMethod } from '../types';
 
 interface CartSidebarProps {
@@ -100,37 +100,36 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({
 
   return (
     <>
-      {/* Overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity animate-fade-in"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sidebar - Constrained Height with 100dvh for mobile input support */}
+      {/* Overlay (Mobile Only) */}
       <div
-        className={`fixed right-0 top-0 h-[100dvh] w-full sm:w-[400px] bg-[#1C1C1E] border-l border-white/10 shadow-2xl z-50 transition-transform duration-300 transform flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 z-40 lg:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        onClick={onClose}
+      />
+
+      {/* Sidebar Panel */}
+      <div
+        className={`fixed right-0 top-0 h-[100dvh] w-full sm:w-[400px] bg-[#1C1C1E] border-l border-white/10 shadow-2xl z-50 transition-transform duration-300 transform flex flex-col lg:static lg:transform-none lg:w-full lg:h-full lg:z-auto lg:border-none lg:shadow-none ${isOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
       >
         {/* Header */}
-        <div className="p-4 border-b border-white/10 flex justify-between items-center bg-[#2C2C2E] z-20 shrink-0">
+        <div className="p-4 border-b border-white/10 flex items-center justify-between shrink-0 bg-[#1C1C1E]">
           <div className="flex items-center gap-3">
-            <div className="bg-[#FFCC00]/20 p-2 rounded-xl">
-              <ShoppingCart className="text-[#FFCC00]" size={20} />
+            <div className="w-10 h-10 rounded-full bg-[#FFCC00] flex items-center justify-center text-black font-bold">
+              <ShoppingBag size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Seu Pedido</h2>
-              <p className="text-xs text-gray-400 font-medium">
-                {cart.length} {cart.length === 1 ? 'item' : 'itens'}
-              </p>
+              <h2 className="font-bold text-lg text-white leading-none">Seu Pedido</h2>
+              <p className="text-xs text-gray-400 mt-0.5 font-medium">{cart.length} itens adicionados</p>
             </div>
           </div>
+
+          {/* Close Button (Mobile Only) */}
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+            className="w-8 h-8 rounded-full bg-[#2C2C2E] text-gray-400 flex items-center justify-center hover:bg-white/10 hover:text-white transition-colors lg:hidden"
           >
-            <ChevronDown size={24} className="rotate-270" />
+            <X size={20} />
           </button>
         </div>
 

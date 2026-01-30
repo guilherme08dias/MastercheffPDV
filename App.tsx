@@ -13,6 +13,8 @@ import { Toaster } from 'react-hot-toast';
 type AppView = 'login' | 'pos' | 'admin' | 'cardapio';
 
 import { MobileTabBar } from './components/MobileTabBar';
+import { ConnectivityBadge } from './components/ConnectivityBadge';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useIsMobile } from './hooks/useIsMobile';
 
 const App: React.FC = () => {
@@ -20,6 +22,7 @@ const App: React.FC = () => {
   const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState<AppView>('login');
+  const [adminSection, setAdminSection] = useState('dashboard'); // New state for admin nav
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -141,38 +144,43 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-        {!session && <LoginScreen />}
+      <ErrorBoundary>
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+          <ConnectivityBadge />
+          {!session && <LoginScreen />}
 
-        {session && userProfile && (
-          <>
-            {currentView === 'admin' && (
-              <AdminDashboard
-                user={userProfile}
-                onNavigateToPos={() => setCurrentView('pos')}
-                onLogout={handleLogout}
-              />
-            )}
+          {session && userProfile && (
+            <>
+              {currentView === 'admin' && (
+                <AdminDashboard
+                  user={userProfile}
+                  onNavigateToPos={() => setCurrentView('pos')}
+                  onLogout={handleLogout}
+                  activeSection={adminSection}
+                />
+              )}
 
-            {currentView === 'pos' && (
-              <POS
-                user={userProfile}
-                onBackToAdmin={() => setCurrentView('admin')}
-                onLogout={handleLogout}
-              />
-            )}
+              {currentView === 'pos' && (
+                <POS
+                  user={userProfile}
+                  onBackToAdmin={() => setCurrentView('admin')}
+                  onLogout={handleLogout}
+                />
+              )}
 
-            {/* Mobile Tab Bar - Only on Mobile AND NOT in POS (POS has internal nav) */}
-            {isMobile && currentView !== 'pos' && (
-              <MobileTabBar
-                currentView={currentView}
-                onNavigate={(view) => setCurrentView(view)}
-                onLogout={handleLogout}
-              />
-            )}
-          </>
-        )}
-      </div>
+              {/* Mobile Tab Bar - Only on Mobile AND NOT in POS (POS has internal nav) AND NOT in Admin (Admin has internal nav) */}
+              {isMobile && currentView !== 'pos' && currentView !== 'admin' && (
+                <MobileTabBar
+                  currentView={currentView}
+                  onNavigate={(view) => setCurrentView(view)}
+                  onLogout={handleLogout}
+                  onNavigateToSection={setAdminSection}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </ErrorBoundary>
       <Toaster position="top-center" />
     </ThemeProvider>
   );

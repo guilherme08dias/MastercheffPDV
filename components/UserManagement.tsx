@@ -93,7 +93,36 @@ WHERE email = '${newUserEmail}';
             </div>
 
             <div className="bg-[#1C1C1E] rounded-2xl shadow-sm border border-white/10 overflow-hidden">
-                <table className="w-full text-left">
+                {/* Mobile View: Cards */}
+                <div className="md:hidden space-y-4 p-4">
+                    {users.map((user) => (
+                        <div key={user.id} className="bg-[#2C2C2E] p-4 rounded-xl flex items-center justify-between border border-white/5">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <div className={`shrink-0 p-2 rounded-full ${user.role === 'admin' ? 'bg-purple-900/20 text-purple-400' : 'bg-blue-900/20 text-blue-400'}`}>
+                                    {user.role === 'admin' ? <Shield size={20} /> : <User size={20} />}
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="font-medium text-white truncate text-sm">{user.email}</p>
+                                    <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide
+                    ${user.role === 'admin' ? 'bg-purple-900/20 text-purple-400' : 'bg-blue-900/20 text-blue-400'}`}>
+                                        {user.role === 'admin' ? 'Administrador' : 'Caixa'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => handleDeleteUser(user.id)}
+                                className="shrink-0 p-2 text-gray-400 hover:text-red-500 hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Remover Acesso"
+                            >
+                                <Trash2 size={20} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Desktop View: Table */}
+                <table className="hidden md:table w-full text-left">
                     <thead className="bg-[#2C2C2E] text-gray-400 text-sm">
                         <tr>
                             <th className="py-4 px-6 font-medium">Usuário</th>

@@ -18,6 +18,18 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              vendor: ['react', 'react-dom', 'framer-motion', 'lucide-react', 'react-hot-toast'],
+              client: ['./components/Cardapio.tsx', './components/LoginScreen.tsx'],
+              pos: ['./components/POS.tsx', './components/SimplePOS.tsx', './components/CartSidebar.tsx'],
+              admin: ['./components/AdminDashboard.tsx', './components/SalesReports.tsx', './components/ExpenseManager.tsx']
+            }
+          }
+        }
       }
     };
 });

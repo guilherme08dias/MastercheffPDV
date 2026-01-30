@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ShoppingBag, Users, BarChart3, Settings, LogOut, UtensilsCrossed, DollarSign, ChevronLeft, ChevronRight, Package } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, BarChart3, Settings, LogOut, UtensilsCrossed, DollarSign, ChevronLeft, ChevronRight, Package, MapPin } from 'lucide-react';
 
 interface SidebarProps {
     currentView: string;
@@ -19,7 +19,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onL
         { id: 'expenses', label: 'Despesas', icon: DollarSign },
         { id: 'reports', label: 'Analytics', icon: BarChart3 },
         { id: 'users', label: 'Usuários', icon: Users },
-        { id: 'settings', label: 'Configurações', icon: Settings },
+        { id: 'settings', label: 'Taxas de Entrega', icon: MapPin },
     ];
 
     // Security Filter: Standard users only see POS

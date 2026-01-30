@@ -12,19 +12,28 @@ import { ExpenseManager } from './ExpenseManager';
 import { UserManagement } from './UserManagement';
 import { StockManager } from './StockManager';
 import { DeliverySettings } from './DeliverySettings';
-import { ThemeToggle } from './ThemeToggle';
+import { AdminMobileNavigation } from './AdminMobileNavigation';
+
 import { useIsMobile } from '../hooks/useIsMobile';
 
 interface AdminDashboardProps {
   user: Profile;
   onNavigateToPos: () => void;
   onLogout: () => void;
+  activeSection?: string; // New prop
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigateToPos, onLogout }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigateToPos, onLogout, activeSection }) => {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Sync with external navigation (Mobile Tab Bar)
+  useEffect(() => {
+    if (activeSection) {
+      setCurrentView(activeSection);
+    }
+  }, [activeSection]);
 
   const [stats, setStats] = useState({
     totalSales: 0,
@@ -309,9 +318,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigate
       </div>
 
       {/* Top Products & Recent Orders - Symmetric Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-        <div className="bg-[#1C1C1E] p-6 rounded-3xl border border-white/5 flex flex-col h-[500px]">
-          <h3 className="text-lg font-bold text-white/90 mb-6">Top Produtos</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch h-[500px]">
+        {/* Top Products Card */}
+        <div className="bg-[#1C1C1E] p-6 rounded-3xl border border-white/5 flex flex-col h-full overflow-hidden">
+          <h3 className="text-lg font-bold text-white/90 mb-6 shrink-0">Top Produtos</h3>
 
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-6">
             {/* Food Section */}
@@ -368,51 +378,97 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigate
           </div>
         </div>
 
-        <div className="bg-[#1C1C1E] p-6 rounded-3xl border border-white/5 flex flex-col h-[500px]">
-          <h3 className="text-lg font-bold text-white/90 mb-6">Últimos Pedidos</h3>
-          <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-2">
+        {/* Recent Orders Card */}
+        <div className="bg-[#1C1C1E] p-0 rounded-3xl border border-white/5 flex flex-col h-full overflow-hidden">
+          <div className="p-6 pb-4 border-b border-white/5 shrink-0">
+            <h3 className="text-lg font-bold text-white/90">Últimos Pedidos</h3>
+          </div>
+
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
             {stats.recentOrders?.length > 0 ? (
-              stats.recentOrders.slice(0, 50).map((order) => (
-                <div key={order.id} className="flex justify-between items-center p-3 hover:bg-[#2C2C2E] rounded-xl transition-colors group border border-transparent hover:border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                      #{order.daily_number || 0}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase ${order.type === 'delivery' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
-                          }`}>
-                          {order.type === 'delivery' ? 'Entrega' : 'Balcão'}
-                        </span>
+              <>
+                {/* Mobile View: Cards */}
+                <div className="md:hidden p-4 space-y-2">
+                  {stats.recentOrders.slice(0, 20).map((order) => (
+                    <div key={order.id} className="flex justify-between items-center p-3 bg-[#2C2C2E]/50 rounded-xl border border-white/5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#3A3A3C] flex items-center justify-center text-white font-bold text-sm shrink-0">
+                          #{order.daily_number || 0}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase ${order.type === 'delivery' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
+                              {order.type === 'delivery' ? 'Entrega' : 'Balcão'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-300 font-medium truncate max-w-[120px]">{removeAccents(order.customer_name || 'Cliente')}</p>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-300 font-medium">{removeAccents(order.customer_name || 'Cliente')}</p>
+                      <div className="text-right">
+                        <p className="font-bold text-[#FFCC00]">R$ {(order.total || 0).toFixed(2)}</p>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Cancelar este pedido?')) return;
+                            const { error } = await supabase.from('orders').update({ status: 'canceled' }).eq('id', order.id);
+                            if (error) toast.error('Erro ao cancelar');
+                            else {
+                              toast.success('Pedido cancelado');
+                              fetchDashboardStats();
+                            }
+                          }}
+                          className="text-xs text-red-500 hover:text-red-400 mt-1"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <p className="font-bold text-[#FFCC00]">R$ {(order.total || 0).toFixed(2)}</p>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm('Cancelar este pedido?')) return;
-                          const { error } = await supabase.from('orders').update({ status: 'canceled' }).eq('id', order.id);
-                          if (error) toast.error('Erro ao cancelar');
-                          else {
-                            toast.success('Pedido cancelado');
-                            fetchDashboardStats();
-                          }
-                        }}
-                        className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-colors"
-                        title="Cancelar Pedido"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))
+
+                {/* Desktop View: Table */}
+                <table className="hidden md:table w-full text-left border-collapse">
+                  <thead className="bg-[#1C1C1E] sticky top-0 z-10">
+                    <tr className="text-gray-500 text-xs uppercase tracking-wider border-b border-white/5">
+                      <th className="py-3 px-6 font-medium">#</th>
+                      <th className="py-3 px-6 font-medium">Cliente</th>
+                      <th className="py-3 px-6 font-medium text-center">Tipo</th>
+                      <th className="py-3 px-6 font-medium text-right">Total</th>
+                      <th className="py-3 px-6 font-medium text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-sm divide-y divide-white/5">
+                    {stats.recentOrders.slice(0, 50).map((order) => (
+                      <tr key={order.id} className="hover:bg-[#2C2C2E] transition-colors group">
+                        <td className="py-3 px-6 font-bold text-white">#{order.daily_number}</td>
+                        <td className="py-3 px-6 text-gray-300">{removeAccents(order.customer_name || 'Cliente')}</td>
+                        <td className="py-3 px-6 text-center">
+                          <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${order.type === 'delivery' ? 'bg-blue-900/20 text-blue-400 border border-blue-500/20' : 'bg-green-900/20 text-green-400 border border-green-500/20'}`}>
+                            {order.type === 'delivery' ? 'Entrega' : 'Balcão'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-6 text-right font-bold text-[#FFCC00]">R$ {(order.total || 0).toFixed(2)}</td>
+                        <td className="py-3 px-6 text-right">
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Cancelar este pedido?')) return;
+                              const { error } = await supabase.from('orders').update({ status: 'canceled' }).eq('id', order.id);
+                              if (error) toast.error('Erro ao cancelar');
+                              else {
+                                toast.success('Pedido cancelado');
+                                fetchDashboardStats();
+                              }
+                            }}
+                            className="p-2 bg-red-500/10 text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/20"
+                            title="Cancelar Pedido"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             ) : (
               <p className="text-gray-500 text-sm text-center py-8 flex items-center justify-center h-full">Nenhum pedido recente</p>
             )}
@@ -425,7 +481,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigate
   const isMobile = useIsMobile();
 
   return (
-    <div className="flex h-screen bg-black">
+    <div className="flex h-screen w-full bg-black overflow-hidden">
       {!isMobile && (
         <Sidebar
           currentView={currentView}
@@ -437,47 +493,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigate
         />
       )}
 
-      <div className={`flex-1 ${!isMobile ? (isSidebarCollapsed ? 'ml-16 md:ml-20' : 'ml-16 md:ml-64') : 'ml-0 pb-24'} transition-all duration-300`}>
-        <div className="p-4 md:p-8">
-          <div className="flex justify-between items-center mb-6 md:mb-8">
-            <div>
-              <h1 className="text-2xl md:text-4xl font-bold tracking-tight text-white">
-                {currentView === 'dashboard' && 'Dashboard'}
-                {currentView === 'products' && 'Cardapio'}
-                {currentView === 'stock' && 'Estoque'}
-                {currentView === 'expenses' && 'Despesas'}
-                {currentView === 'reports' && 'Analytics'}
-                {currentView === 'users' && 'Usuarios'}
-                {currentView === 'settings' && 'Configuracoes'}
-              </h1>
-              <p className="text-gray-500 dark:text-gray-400 text-sm md:text-base">
-                Bem-vindo, {removeAccents(user?.full_name || user?.email || 'Usuario')}
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <ThemeToggle />
-              <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative">
-                <Bell size={20} className="text-gray-600 dark:text-gray-400" />
-              </button>
-            </div>
-          </div>
+      {/* Main Content Area - Scrollable */}
+      <div className={`flex-1 flex flex-col h-full overflow-hidden transition-all duration-300 ${!isMobile ? 'ml-0' : ''}`}>
+        {/* Note: Sidebar is fixed in its component but here we treat layout as flex row. 
+            Actually Sidebar component is likely fixed position based on previous code. 
+            Let's check Sidebar.tsx later. standard Sidebar pattern usually is static in flex container or fixed. 
+            Assuming Sidebar is static for now based on flex container, or if fixed we need margin.
+            Line 448 in original was: ml-16 md:ml-64.
+            If I change wrapper to flex-1, it implies Sidebar is IN the flex flow or I need to keep margin. 
+            Let's keep the margin logic if Sidebar is fixed. 
+        */}
+        <div className={`flex-1 overflow-y-auto ${!isMobile ? (isSidebarCollapsed ? 'ml-20' : 'ml-64') : 'pb-24'} transition-all duration-300`}>
+          <div className="p-4 md:p-8 space-y-6">
+            {/* Mobile Admin Navigation Slider (REMOVED - Using Pill Hub) */}
+            {/* <div className="md:hidden flex overflow-x-auto gap-2 mb-6 pb-2 no-scrollbar -mx-4 px-4"> ... </div> */}
 
-          {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div>
+            <div className="flex flex-row justify-between items-start md:items-center mb-4 md:mb-8 gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-3">
+                  <h1 className="text-xl md:text-4xl font-bold tracking-tight text-white">
+                    {currentView === 'dashboard' && (isMobile ? 'Visão Geral' : 'Dashboard')}
+                    {currentView === 'products' && (isMobile ? 'Gerenciar Cardápio' : 'Cardápio')}
+                    {currentView === 'stock' && (isMobile ? 'Estoque' : 'Controle de Estoque')}
+                    {currentView === 'expenses' && (isMobile ? 'Despesas' : 'Gerenciar Despesas')}
+                    {currentView === 'reports' && (isMobile ? 'Relatórios' : 'Analytics')}
+                    {currentView === 'users' && (isMobile ? 'Equipe' : 'Usuários')}
+                    {currentView === 'settings' && (isMobile ? 'Logística' : 'Configurações')}
+                  </h1>
+                  <button className="md:hidden p-2 hover:bg-white/10 rounded-full transition-colors relative">
+                    <Bell size={18} className="text-[#FFCC00]" />
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#1C1C1E]"></span>
+                  </button>
+                </div>
+                <p className="text-gray-500 dark:text-gray-400 text-xs md:text-base mt-0.5">
+                  Bem-vindo, {removeAccents(user?.full_name || user?.email || 'Usuario')}
+                </p>
+              </div>
+
+              <div className="hidden md:flex items-center gap-4">
+                <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors relative">
+                  <Bell size={20} className="text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
             </div>
-          ) : (
-            <>
-              {currentView === 'dashboard' && renderDashboardView()}
-              {currentView === 'products' && <ProductManager />}
-              {currentView === 'stock' && <StockManager />}
-              {currentView === 'expenses' && <ExpenseManager />}
-              {currentView === 'reports' && <SalesReports />}
-              {currentView === 'users' && <UserManagement />}
-              {currentView === 'settings' && <DeliverySettings />}
-            </>
-          )}
+
+            {isLoading ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div>
+              </div>
+            ) : (
+              <>
+                {currentView === 'dashboard' && renderDashboardView()}
+                {currentView === 'products' && <ProductManager />}
+                {currentView === 'stock' && <StockManager />}
+                {currentView === 'expenses' && <ExpenseManager />}
+                {currentView === 'reports' && <SalesReports />}
+                {currentView === 'users' && <UserManagement />}
+                {currentView === 'settings' && <DeliverySettings />}
+              </>
+            )}
+          </div>
         </div>
+      </div>
+      <div className="lg:hidden">
+        <AdminMobileNavigation
+          activeView={currentView}
+          onChangeView={setCurrentView}
+          onLogout={onLogout}
+          onNavigateToPos={onNavigateToPos}
+        />
       </div>
     </div>
   );

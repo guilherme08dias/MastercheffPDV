@@ -286,8 +286,8 @@
             return num === 13 ? '12+1' : num.toString();
         }
 
-        // Função auxiliar para buscar itens com retry
-        async function fetchOrderItems(orderId, attempts = 3) {
+        // Função auxiliar para buscar itens com retry (Polite Polling)
+        async function fetchOrderItems(orderId, attempts = 5) { // Aumentado para 5 tentativas (5s)
             for (let i = 0; i < attempts; i++) {
                 const { data: items, error } = await supabaseClient
                     .from('order_items')
@@ -295,18 +295,19 @@
                     .eq('order_id', orderId);
 
                 if (error) {
-                    console.error('Erro ao buscar itens:', error);
-                    return [];
+                    console.error(`Erro ao buscar itens (Tentativa ${i + 1}/${attempts}):`, error);
                 }
 
                 if (items && items.length > 0) {
+                    if (i > 0) console.log(`✅ Itens encontrados na tentativa ${i + 1}`);
                     return items;
                 }
 
                 // Se não encontrou itens, espera um pouco e tenta de novo (race condition)
-                console.log(`Tentativa ${i + 1}: Itens não encontrados, aguardando...`);
+                console.log(`⏳ Tentativa ${i + 1}/${attempts}: Itens não encontrados para Pedido #${orderId}, aguardando sincronia...`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
+            console.warn(`⚠️ Desistindo de buscar itens após ${attempts} tentativas.`);
             return [];
         }
 

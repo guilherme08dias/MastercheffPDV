@@ -8,6 +8,12 @@
   }
 }
 
+/* Yellow-Safety Enforcement */
+/* Garante que qualquer elemento com fundo amarelo da marca tenha texto preto para contraste AAA */
+.bg-brand-500 {
+    color: black !important;
+}
+
 /* Custom Utilities */
 .scrollbar-hide::-webkit-scrollbar {
     display: none;

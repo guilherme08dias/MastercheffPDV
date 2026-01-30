@@ -6,12 +6,19 @@ import { ProductCard } from './ProductCard';
 import { LiteProductModal } from './LiteProductModal';
 import { Share2, ShoppingCart, Search, X, Check, Trash2, ArrowRight, LayoutGrid, Clock, MapPin, Send, Phone, Utensils, Wine, ShoppingBag, Pencil, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { checkProductAvailability, StockStatus } from '../utils/stockUtils';
+import { StockItem, ProductIngredient } from '../types';
 
 export const Cardapio: React.FC = () => {
     // Estado de Dados
     const [products, setProducts] = useState<Product[]>([]);
     const [addons, setAddons] = useState<Addon[]>([]);
     const [tags, setTags] = useState<Tag[]>([]);
+
+    // REALTIME STOCK STATE
+    const [stockMap, setStockMap] = useState<Record<string, StockItem>>({});
+    const [ingredientsMap, setIngredientsMap] = useState<Record<string, ProductIngredient[]>>({});
+
     const [loading, setLoading] = useState(true);
 
     // Estado do Carrinho
@@ -81,6 +88,7 @@ export const Cardapio: React.FC = () => {
 
     useEffect(() => {
         fetchData();
+        fetchStockAndIngredients();
         checkStoreStatus();
 
         // Realtime subscription for Shift Status
@@ -95,6 +103,44 @@ export const Cardapio: React.FC = () => {
         return () => {
             supabase.removeChannel(shiftSubscription);
         };
+        return () => {
+            supabase.removeChannel(shiftSubscription);
+        };
+    }, []);
+
+    // CARREGAR ESTOQUE E FICHA TÉCNICA
+    const fetchStockAndIngredients = async () => {
+        // 1. Fetch Stock Items
+        const { data: stockData } = await supabase.from('stock_items').select('*');
+        if (stockData) {
+            const map: Record<string, StockItem> = {};
+            stockData.forEach(item => { map[item.id] = item; });
+            setStockMap(map);
+        }
+
+        // 2. Fetch Product Ingredients
+        const { data: ingData } = await supabase.from('product_ingredients').select('*');
+        if (ingData) {
+            const map: Record<string, ProductIngredient[]> = {};
+            ingData.forEach(ing => {
+                if (!map[ing.product_id]) map[ing.product_id] = [];
+                map[ing.product_id].push(ing);
+            });
+            setIngredientsMap(map);
+        }
+    };
+
+    // REALTIME STOCK LISTENER
+    useEffect(() => {
+        const channel = supabase
+            .channel('stock_changes_cardapio')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stock_items' }, payload => {
+                const newItem = payload.new as StockItem;
+                setStockMap(prev => ({ ...prev, [newItem.id]: newItem }));
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
     }, []);
 
     // ... (rest of useEffects)
@@ -278,7 +324,12 @@ export const Cardapio: React.FC = () => {
 
 
 
+    // State for submit lock
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const submitOrder = async () => {
+        if (isSubmitting) return;
+
         // Re-verificar status da loja antes de enviar
         const { data: currentShiftCheck } = await supabase
             .from('shifts')
@@ -314,6 +365,17 @@ export const Cardapio: React.FC = () => {
         if (cart.length === 0) return;
 
         setSending(true);
+        setIsSubmitting(true);
+
+        // SAFETY: Timeout to unlock button if server hangs
+        const safetyTimeout = setTimeout(() => {
+            if (sending) { // check outdated state ref or use isSubmitting local var logic
+                setSending(false);
+                setIsSubmitting(false);
+                alert("O pedido demorou muito para responder. Verifique sua conexão e tente novamente.");
+            }
+        }, 15000); // 15s timeout
+
         try {
             // Montar endereço completo (incluindo complemento se apartamento)
             const neighborhoodName = deliveryAreas.find(da => String(da.id) === String(selectedNeighborhoodId))?.name || '';
@@ -403,11 +465,13 @@ export const Cardapio: React.FC = () => {
             const whatsappUrl = `https://wa.me/5549999422033?text=${encodeURIComponent(message)}`;
 
             // Pequeno delay para mostrar o toast/UI de sucesso antes de sair
+            clearTimeout(safetyTimeout);
             setTimeout(() => {
                 window.location.href = whatsappUrl;
             }, 1000);
         } catch (error: any) {
             console.error('Erro ao enviar pedido:', error);
+            clearTimeout(safetyTimeout);
 
             // Tratamento específico para erros de RLS/permissão
             if (error?.code === '42501' || error?.message?.includes('policy')) {
@@ -419,6 +483,7 @@ export const Cardapio: React.FC = () => {
             }
         } finally {
             setSending(false);
+            setIsSubmitting(false);
         }
     };
 
@@ -552,6 +617,10 @@ export const Cardapio: React.FC = () => {
                                             setSelectedProduct(p);
                                             setIsModalOpen(true);
                                         }}
+                                        stockStatus={checkProductAvailability(
+                                            ingredientsMap[product.id] || [],
+                                            stockMap
+                                        )}
                                     />
                                 </motion.div>
                             ))}

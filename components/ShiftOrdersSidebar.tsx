@@ -146,8 +146,8 @@ export const ShiftOrdersSidebar: React.FC<ShiftOrdersSidebarProps> = ({ shiftId,
 
     return (
         <div className="w-full bg-[#1C1C1E] border-r border-white/5 flex flex-col h-full">
-            <div className="p-4 border-b border-white/5 flex items-center justify-between">
-                <h2 className="text-white font-bold flex items-center gap-2">
+            <div className="p-4 border-b border-white/5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between sticky top-0 bg-[#1C1C1E] z-10">
+                <h2 className="text-white font-bold flex items-center gap-2 text-lg">
                     <Clock size={18} className="text-[#FFCC00]" />
                     {shiftId ? 'Pedidos do Turno' : 'Últimas 24h'}
                 </h2>

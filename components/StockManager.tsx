@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import { StockItem } from '../types';
 import { StockEntryModal } from './StockEntryModal';
 import { StockLossModal } from './StockLossModal';
-import { Plus, Search, Trash2, Loader2, Package, AlertTriangle, Save, X, ArrowDownCircle, AlertOctagon, Timer } from 'lucide-react';
+import { Plus, Search, Trash2, Loader2, Package, AlertTriangle, Save, X, ArrowDownCircle, AlertOctagon, Timer, Edit2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export const StockManager: React.FC = () => {
     const [items, setItems] = useState<StockItem[]>([]);
@@ -105,9 +106,10 @@ export const StockManager: React.FC = () => {
 
             setIsModalOpen(false);
             fetchItems();
+            toast.success('Item salvo com sucesso!');
         } catch (error) {
             console.error('Error saving item:', error);
-            alert('Erro ao salvar item de estoque');
+            toast.error('Erro ao salvar item de estoque');
         } finally {
             setSaving(false);
         }
@@ -121,7 +123,7 @@ export const StockManager: React.FC = () => {
             fetchItems();
         } catch (error) {
             console.error('Error deleting item:', error);
-            alert('Erro ao excluir. Verifique se não está vinculado a algum produto.');
+            toast.error('Erro ao excluir. Verifique vínculos.');
         }
     };
 
@@ -132,35 +134,36 @@ export const StockManager: React.FC = () => {
     return (
         <div className="bg-[#1C1C1E] rounded-xl shadow-sm border border-white/10 flex flex-col h-[600px] animate-fade-in">
             {/* Header */}
-            <div className="p-6 border-b border-white/10 flex justify-between items-center bg-[#1C1C1E] rounded-t-xl">
+            {/* Header */}
+            <div className="p-4 md:p-6 border-b border-white/10 flex flex-col md:flex-row justify-between items-start md:items-center bg-[#1C1C1E] rounded-t-xl gap-4">
                 <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Package className="text-[#FFCC00]" />
+                    <h2 className="text-lg md:text-xl font-bold text-white flex items-center gap-2">
+                        <Package className="text-[#FFCC00]" size={24} />
                         Controle de Estoque
                     </h2>
-                    <p className="text-sm text-gray-400">Gerencie insumos e níveis de reposição</p>
+                    <p className="text-xs md:text-sm text-gray-400 mt-1">Gerencie insumos e níveis de reposição</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 md:flex w-full md:w-auto gap-3">
                     <button
                         onClick={() => setIsLossModalOpen(true)}
-                        className="bg-red-900/20 text-red-400 hover:bg-red-900/40 px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-red-500/20"
+                        className="bg-red-900/20 text-red-400 hover:bg-red-900/40 px-3 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors border border-red-500/20 text-xs md:text-sm"
                         title="Registrar Perda/Quebra"
                     >
-                        <AlertOctagon size={20} />
+                        <AlertOctagon size={18} />
                         Quebra
                     </button>
                     <button
                         onClick={() => setIsEntryModalOpen(true)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-900/20"
+                        className="bg-blue-600 text-white px-3 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-900/20 text-xs md:text-sm"
                     >
-                        <ArrowDownCircle size={20} />
+                        <ArrowDownCircle size={18} />
                         Entrada
                     </button>
                     <button
                         onClick={() => handleOpenModal()}
-                        className="bg-[#FFCC00] text-black px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-[#E5B800] transition-colors shadow-lg"
+                        className="col-span-2 md:col-span-1 bg-[#FFCC00] text-black px-4 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-[#E5B800] transition-colors shadow-lg text-xs md:text-sm"
                     >
-                        <Plus size={20} />
+                        <Plus size={18} />
                         Novo Item
                     </button>
                 </div>
@@ -180,7 +183,7 @@ export const StockManager: React.FC = () => {
                 </div>
             </div>
 
-            {/* List */}
+            {/* Responsive List: Cards for Mobile, Table for Desktop */}
             <div className="flex-1 overflow-y-auto p-0">
                 {loading ? (
                     <div className="flex justify-center items-center h-full">
@@ -192,74 +195,150 @@ export const StockManager: React.FC = () => {
                         <p>Nenhum insumo encontrado.</p>
                     </div>
                 ) : (
-                    <table className="w-full text-left border-collapse">
-                        <thead className="bg-[#2C2C2E] sticky top-0 z-10 backdrop-blur-sm shadow-sm">
-                            <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-white/5">
-                                <th className="py-3 px-6 font-medium">Nome</th>
-                                <th className="py-3 px-6 font-medium text-center">Unidade</th>
-                                <th className="py-3 px-6 font-medium text-right">Quantidade Atual</th>
-                                <th className="py-3 px-6 font-medium text-right">Mínimo</th>
-                                <th className="py-3 px-6 font-medium text-center">Autonomia (Dias)</th>
-                                <th className="py-3 px-6 font-medium text-center">Status</th>
-                                <th className="py-3 px-6 font-medium text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-sm divide-y divide-white/5 bg-[#1C1C1E]">
+                    <>
+                        {/* Mobile View: Cards */}
+                        {/* Mobile View: Cards */}
+                        <div className="md:hidden p-4 space-y-3">
                             {filteredItems.map((item) => {
                                 const isLowStock = item.current_quantity <= item.min_quantity;
                                 const autonomy = autonomyMap[item.id];
-                                let autonomyClass = "text-gray-500";
-                                if (autonomy && autonomy < 2) autonomyClass = "text-red-400 font-bold animate-pulse";
-                                else if (autonomy && autonomy < 7) autonomyClass = "text-yellow-500 font-bold";
-                                else if (autonomy && autonomy >= 7) autonomyClass = "text-green-500";
-
                                 return (
-                                    <tr key={item.id} className="hover:bg-[#2C2C2E] transition-colors duration-200 group">
-                                        <td className="py-3 px-6 border-b border-white/5 font-medium text-gray-300">{item.name}</td>
-                                        <td className="py-3 px-6 border-b border-white/5 text-center text-gray-500">{item.unit}</td>
-                                        <td className="py-3 px-6 border-b border-white/5 text-right font-bold text-gray-300">
-                                            {item.current_quantity.toFixed(3).replace(/\.?0+$/, '')}
-                                        </td>
-                                        <td className="py-3 px-6 border-b border-white/5 text-right text-gray-500">
-                                            {item.min_quantity}
-                                        </td>
-                                        <td className={`py-3 px-6 border-b border-white/5 text-center font-medium ${autonomyClass}`}>
-                                            {autonomy !== undefined ? (autonomy > 365 ? '> 1 ano' : `${Math.round(autonomy)} dias`) : '-'}
-                                        </td>
-                                        <td className="py-3 px-6 border-b border-white/5 text-center">
+                                    <div key={item.id} className="bg-[#2C2C2E] rounded-xl border border-white/5 shadow-sm p-4 relative group">
+
+                                        {/* Card Header */}
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="flex-1 mr-4">
+                                                <h3 className="font-bold text-white text-base leading-tight break-words">{item.name}</h3>
+                                                <p className="text-xs text-gray-400 uppercase mt-0.5">{item.unit}</p>
+                                            </div>
                                             {isLowStock ? (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-900/20 text-red-400 animate-pulse border border-red-500/20">
-                                                    <AlertTriangle size={12} /> Repor
+                                                <span className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold bg-red-900/20 text-red-400 border border-red-500/20 animate-pulse">
+                                                    REPOR
                                                 </span>
                                             ) : (
-                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-900/20 text-green-400 border border-green-500/20">
+                                                <span className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold bg-green-900/20 text-green-400 border border-green-500/20">
                                                     OK
                                                 </span>
                                             )}
-                                        </td>
-                                        <td className="py-3 px-6 border-b border-white/5 text-right">
-                                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        </div>
+
+                                        {/* Stats Grid */}
+                                        <div className="grid grid-cols-2 gap-4 mb-4 bg-black/20 p-3 rounded-lg border border-white/5">
+                                            <div>
+                                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider mb-1">Atual</p>
+                                                <p className={`text-xl font-bold ${isLowStock ? 'text-red-400' : 'text-white'}`}>
+                                                    {item.current_quantity.toFixed(3).replace(/\.?0+$/, '')}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider mb-1">Mínimo</p>
+                                                <p className="text-white font-medium text-lg">{item.min_quantity}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Footer Actions */}
+                                        <div className="flex justify-between items-center pt-2">
+                                            <div className="flex items-center gap-1.5">
+                                                <Timer size={14} className="text-gray-500" />
+                                                <span className={`text-xs font-bold ${autonomy && autonomy < 2 ? "text-red-400" :
+                                                    autonomy && autonomy < 7 ? "text-yellow-500" : "text-gray-400"
+                                                    }`}>
+                                                    {autonomy !== undefined ? `${Math.round(autonomy)} dias` : '-'}
+                                                </span>
+                                            </div>
+                                            <div className="flex gap-2 w-full pl-4 border-l border-white/10">
                                                 <button
                                                     onClick={() => handleOpenModal(item)}
-                                                    className="p-2 text-blue-400 hover:bg-blue-900/20 rounded-lg transition-colors"
+                                                    className="flex-1 p-3 bg-blue-500/10 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors flex items-center justify-center gap-2"
                                                     title="Editar"
                                                 >
-                                                    <Package size={18} />
+                                                    <Edit2 size={20} />
+                                                    <span className="text-xs font-bold md:hidden">EDITAR</span>
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(item.id)}
-                                                    className="p-2 text-yellow-500 hover:bg-yellow-900/20 rounded-lg transition-colors"
+                                                    className="p-3 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors flex items-center justify-center"
                                                     title="Excluir"
                                                 >
-                                                    <Trash2 size={18} />
+                                                    <Trash2 size={20} />
                                                 </button>
                                             </div>
-                                        </td>
-                                    </tr>
+                                        </div>
+                                    </div>
                                 );
                             })}
-                        </tbody>
-                    </table>
+                        </div>
+
+                        {/* Desktop View: Table */}
+                        <table className="hidden md:table w-full text-left border-collapse">
+                            <thead className="bg-[#2C2C2E] sticky top-0 z-10 backdrop-blur-sm shadow-sm">
+                                <tr className="text-gray-400 text-xs uppercase tracking-wider border-b border-white/5">
+                                    <th className="py-3 px-6 font-medium">Nome</th>
+                                    <th className="py-3 px-6 font-medium text-center">Unidade</th>
+                                    <th className="py-3 px-6 font-medium text-right">Quantidade Atual</th>
+                                    <th className="py-3 px-6 font-medium text-right">Mínimo</th>
+                                    <th className="py-3 px-6 font-medium text-center">Autonomia (Dias)</th>
+                                    <th className="py-3 px-6 font-medium text-center">Status</th>
+                                    <th className="py-3 px-6 font-medium text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-sm divide-y divide-white/5 bg-[#1C1C1E]">
+                                {filteredItems.map((item) => {
+                                    const isLowStock = item.current_quantity <= item.min_quantity;
+                                    const autonomy = autonomyMap[item.id];
+                                    let autonomyClass = "text-gray-500";
+                                    if (autonomy && autonomy < 2) autonomyClass = "text-red-400 font-bold animate-pulse";
+                                    else if (autonomy && autonomy < 7) autonomyClass = "text-yellow-500 font-bold";
+                                    else if (autonomy && autonomy >= 7) autonomyClass = "text-green-500";
+
+                                    return (
+                                        <tr key={item.id} className="hover:bg-[#2C2C2E] transition-colors duration-200 group">
+                                            <td className="py-3 px-6 border-b border-white/5 font-medium text-gray-300">{item.name}</td>
+                                            <td className="py-3 px-6 border-b border-white/5 text-center text-gray-500">{item.unit}</td>
+                                            <td className="py-3 px-6 border-b border-white/5 text-right font-bold text-gray-300">
+                                                {item.current_quantity.toFixed(3).replace(/\.?0+$/, '')}
+                                            </td>
+                                            <td className="py-3 px-6 border-b border-white/5 text-right text-gray-500">
+                                                {item.min_quantity}
+                                            </td>
+                                            <td className={`py-3 px-6 border-b border-white/5 text-center font-medium ${autonomyClass}`}>
+                                                {autonomy !== undefined ? (autonomy > 365 ? '> 1 ano' : `${Math.round(autonomy)} dias`) : '-'}
+                                            </td>
+                                            <td className="py-3 px-6 border-b border-white/5 text-center">
+                                                {isLowStock ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-900/20 text-red-400 animate-pulse border border-red-500/20">
+                                                        <AlertTriangle size={12} /> Repor
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-900/20 text-green-400 border border-green-500/20">
+                                                        OK
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="py-3 px-6 border-b border-white/5 text-right">
+                                                <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => handleOpenModal(item)}
+                                                        className="p-2 text-blue-400 hover:bg-blue-900/20 rounded-lg transition-colors"
+                                                        title="Editar"
+                                                    >
+                                                        <Edit2 size={18} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(item.id)}
+                                                        className="p-2 text-yellow-500 hover:bg-yellow-900/20 rounded-lg transition-colors"
+                                                        title="Excluir"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </>
                 )}
             </div>
 
@@ -283,7 +362,7 @@ export const StockManager: React.FC = () => {
                                     required
                                     value={formName}
                                     onChange={(e) => setFormName(e.target.value)}
-                                    className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white placeholder-gray-500"
+                                    className="w-full px-4 py-3 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white placeholder-gray-500"
                                     placeholder="Ex: Pão de Xis"
                                 />
                             </div>
@@ -293,7 +372,7 @@ export const StockManager: React.FC = () => {
                                     <select
                                         value={formUnit}
                                         onChange={(e) => setFormUnit(e.target.value)}
-                                        className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
+                                        className="w-full px-4 py-3 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
                                     >
                                         <option value="un">Unidade (un)</option>
                                         <option value="kg">Quilo (kg)</option>
@@ -309,9 +388,10 @@ export const StockManager: React.FC = () => {
                                         required
                                         min="0"
                                         step="0.001"
+                                        inputMode="decimal"
                                         value={formMinQuantity}
                                         onChange={(e) => setFormMinQuantity(e.target.value)}
-                                        className="w-full px-4 py-2 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
+                                        className="w-full px-4 py-3 border-none bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
                                     />
                                 </div>
                             </div>
@@ -321,10 +401,10 @@ export const StockManager: React.FC = () => {
                                     type="number"
                                     required
                                     min="0"
-                                    step="0.001"
+                                    inputMode="decimal"
                                     value={formQuantity}
                                     onChange={(e) => setFormQuantity(e.target.value)}
-                                    className="w-full px-4 py-2 border-2 border-gray-600 bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white font-bold"
+                                    className="w-full px-4 py-3 border-2 border-gray-600 bg-[#2C2C2E] rounded-lg focus:ring-2 focus:ring-[#FFCC00] outline-none text-white font-bold text-lg"
                                 />
                             </div>
                             <div className="pt-4 flex gap-3">
