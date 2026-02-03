@@ -67,7 +67,7 @@ export const RecentOrders: React.FC = () => {
                                         {order.customer_name || 'Cliente Balcão'}
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                        #{order.id} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        #{order.daily_number || order.id} • {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </p>
                                 </div>
                             </div>

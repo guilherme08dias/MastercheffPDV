@@ -6,7 +6,8 @@ import { ProductModal } from './ProductModal';
 import { CartSidebar } from './CartSidebar';
 import { ShiftOrdersSidebar } from './ShiftOrdersSidebar';
 import { OrderHistoryModal } from './OrderHistoryModal';
-import { ShoppingCart, LogOut, ArrowLeft, History, Check, AlertTriangle, Search, LayoutDashboard, Settings, Store, RefreshCcw } from 'lucide-react';
+import { DigitalQueueSidebar } from './DigitalQueueSidebar';
+import { ShoppingCart, LogOut, ArrowLeft, History, Check, AlertTriangle, Search, LayoutDashboard, Settings, Store, RefreshCcw, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getBrasiliaDateFormatted } from '../utils/dateUtils';
 import { POSNavigation } from './POSNavigation';
@@ -46,28 +47,9 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Alternar barra lateral móvel
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // Mobile Menu State
-  const [isStoreOpen, setIsStoreOpen] = useState(true); // Store Status State
   const [searchQuery, setSearchQuery] = useState(''); // Estado da busca
   const [showToast, setShowToast] = useState(false); // Dynamic Island Toast
 
-  // Helper Functions for Mobile Admin Actions
-  const toggleStoreStatus = async (status: boolean) => {
-    try {
-      // Optimistic update
-      setIsStoreOpen(status);
-      const { error } = await supabase
-        .from('store_settings')
-        .update({ is_open: status })
-        .eq('id', 1); // Assuming single store record
-
-      if (error) throw error;
-      toast.success(status ? 'Loja Aberta!' : 'Loja Fechada!');
-    } catch (e) {
-      console.error(e);
-      toast.error('Erro ao alterar status da loja');
-      setIsStoreOpen(!status); // Revert on error
-    }
-  };
 
   const clearPrintQueue = async () => {
     try {
@@ -110,6 +92,40 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
     canceledOrders: [] as any[],
     canceledTotal: 0
   });
+
+  // Fila Digital State
+  const [isDigitalQueueOpen, setIsDigitalQueueOpen] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState<number | null>(null);
+  const [digitalQueueCount, setDigitalQueueCount] = useState(0);
+
+  // Digital Queue Count Listener (Badge)
+  useEffect(() => {
+    const fetchQueueCount = async () => {
+      const { count } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pre_venda');
+      setDigitalQueueCount(count || 0);
+    };
+
+    fetchQueueCount();
+
+    const channel = supabase
+      .channel('digital_queue_count')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'orders',
+        filter: 'status=eq.pre_venda'
+      }, () => {
+        fetchQueueCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Estado para Alertas de Pedidos Web
   const [webOrderAlert, setWebOrderAlert] = useState<{
@@ -553,6 +569,39 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
     }
   };
 
+  const handleImportPreOrder = (order: Order, items: OrderItem[]) => {
+    // 1. Confirm overwrite if cart has items
+    if (cart.length > 0) {
+      if (!confirm("Importar este pedido substituirá os itens atuais do carrinho. Continuar?")) return;
+    }
+
+    // 2. Convert Items
+    const newCartItems: CartItem[] = items.map(item => {
+      const productData = (item as any).product || (item as any).products;
+      return {
+        tempId: crypto.randomUUID(),
+        product: {
+          id: item.product_id,
+          name: productData?.name || 'Produto',
+          price: item.unit_price,
+          category: productData?.category || 'Outros',
+          image_url: productData?.image_url,
+          is_available: true
+        },
+        quantity: item.quantity,
+        notes: item.notes || '',
+        addons: (item as any).addons_detail || [],
+        tags: []
+      };
+    });
+
+    setCart(newCartItems);
+    setCustomerName(order.customer_name || '');
+    setPendingOrderId(order.id);
+    setIsDigitalQueueOpen(false);
+    toast.success(`Pedido de ${order.customer_name} carregado!`);
+  };
+
   // Lógica do Carrinho
   const addToCart = (item: CartItem) => {
     setCart([...cart, item]);
@@ -631,46 +680,72 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
     try {
       console.log("Criando pedido...", { shift_id: currentShift.id, total, subtotal, discount });
 
-      // LÓGICA DE NUMERAÇÃO POR TURNO (SHIFT-BASED)
-      // Buscar o Maior Número do Turno Atual
-      const { data: maxOrder } = await supabase
-        .from('orders')
-        .select('daily_number')
-        .eq('shift_id', currentShift.id)
-        .order('daily_number', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // LÓGICA DE NUMERAÇÃO: Delegada para o Trigger do Banco de Dados
+      // const { data: maxOrder } = await supabase...
 
-      const nextDailyNumber = (maxOrder?.daily_number || 0) + 1;
+      let orderData;
 
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          shift_id: currentShift.id,
-          customer_name: customerName,
-          type,
-          neighborhood_id: neighborhood?.id,
-          delivery_fee_snapshot: deliveryFee,
-          payment_method: paymentMethod,
-          total,
-          status: 'completed',
-          daily_number: nextDailyNumber,
-          discount_amount: discountAmount,
-          discount_type: discount?.type || 'fixed',
-          discount_reason: discount?.reason
-        })
-        .select()
-        .single();
+      if (pendingOrderId) {
+        // --- UPDATE EXISTING PRE-ORDER ---
+        console.log("Atualizando pré-venda existente:", pendingOrderId);
 
-      if (orderError) {
-        console.error("Erro ao criar pedido:", orderError);
-        throw orderError;
+        const { data, error } = await supabase
+          .from('orders')
+          .update({
+            shift_id: currentShift.id,
+            customer_name: customerName,
+            type,
+            neighborhood_id: neighborhood?.id,
+            delivery_fee_snapshot: deliveryFee,
+            payment_method: paymentMethod,
+            total,
+            status: 'completed', // Promove para oficial
+            // daily_number: nextDailyNumber, // HANDLED BY TRIGGER
+            discount_amount: discountAmount,
+            discount_type: discount?.type || 'fixed',
+            discount_reason: discount?.reason,
+            created_at: new Date().toISOString() // Atualiza horário para o momento da venda
+          })
+          .eq('id', pendingOrderId)
+          .select()
+          .single();
+
+        if (error) throw error;
+        orderData = data;
+
+        // Clean up old items to replace with new ones (simplest edit logic)
+        await supabase.from('order_items').delete().eq('order_id', pendingOrderId);
+
+      } else {
+        // --- CREATE NEW ORDER ---
+        const { data, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            shift_id: currentShift.id,
+            customer_name: customerName,
+            type,
+            neighborhood_id: neighborhood?.id,
+            delivery_fee_snapshot: deliveryFee,
+            payment_method: paymentMethod,
+            total,
+            status: 'completed',
+            // daily_number: nextDailyNumber, // HANDLED BY TRIGGER
+            discount_amount: discountAmount,
+            discount_type: discount?.type || 'fixed',
+            discount_reason: discount?.reason
+          })
+          .select()
+          .single();
+
+        if (orderError) throw orderError;
+        orderData = data;
       }
+
       if (!orderData) {
         throw new Error("Falha na criação do pedido: Sem dados");
       }
 
-      console.log("Pedido criado com sucesso:", orderData);
+      console.log("Pedido processado com sucesso:", orderData);
 
       // 2. Criar Itens (Unit Price deve incluir adicionais para bater o caixa)
       const itemsPayload = cart.map(item => {
@@ -701,16 +776,13 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
 
       console.log("Itens inseridos com sucesso");
 
-      console.log("Itens inseridos com sucesso");
-
-      // 3. BAIXA DE ESTOQUE (INVENTÁRIO) - Removido: Agora feito via DB Trigger (fn_decrement_stock)
-
       // 4. Preparar Modal de Sucesso
       setLastOrderNumber(orderData.daily_number || orderData.id);
 
-      // 4. Resetar & Mostrar Modal
+      // 4. Resetar
       setCart([]);
       setCustomerName('');
+      setPendingOrderId(null); // Clear pending
       setIsSidebarOpen(false);
 
       // Ativar modal de sucesso
@@ -961,44 +1033,44 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
   // RENDERIZAR: ABRIR CAIXA (SEM TURNO ATIVO)
   if (!currentShift) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 p-4 transition-colors">
+      <div className="h-screen flex flex-col items-center justify-center bg-[#1C1C1E] p-4 transition-colors">
         {onBackToAdmin && (
-          <button onClick={onBackToAdmin} className="absolute top-4 left-4 flex items-center gap-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white">
-            <ArrowLeft size={20} /> Voltar
+          <button onClick={onBackToAdmin} className="absolute top-4 left-4 flex items-center gap-2 text-zinc-500 hover:text-white transition-colors">
+            <ArrowLeft size={20} /> <span className="text-sm font-medium">Voltar</span>
           </button>
         )}
-        <div className="bg-white dark:bg-[#1C1C1E] p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-6 border border-gray-200 dark:border-white/10">
+        <div className="bg-[#2C2C2E] p-8 rounded-3xl shadow-2xl max-w-md w-full text-center space-y-6 border border-white/5">
           <div className="w-40 h-40 mx-auto mb-4">
             <img src="/card_logo.png" alt="Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">MasterPedidos</h1>
+          <h1 className="text-2xl font-bold text-white tracking-wide">MasterPedidos</h1>
 
           {!showOpenInput ? (
             <>
-              <p className="text-gray-500 font-medium">Nenhum caixa aberto no momento.</p>
+              <p className="text-zinc-400 font-medium">Nenhum caixa aberto no momento.</p>
               <button
                 onClick={() => setShowOpenInput(true)}
-                className="w-full py-4 bg-[#BB080E] hover:bg-[#9F1226] text-white rounded-xl font-bold text-lg shadow-lg shadow-[#BB080E]/20 transition-all transform hover:scale-105"
+                className="w-full py-4 bg-[#FFCC00] hover:bg-[#E5B800] text-black rounded-2xl font-bold text-lg shadow-lg shadow-[#FFCC00]/10 transition-all transform hover:scale-[1.02]"
               >
                 ABRIR CAIXA
               </button>
-              <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600 underline">Sair</button>
+              <button onClick={onLogout} className="text-sm text-zinc-500 hover:text-white transition-colors underline-offset-4 hover:underline">Sair</button>
             </>
           ) : (
             <div className="space-y-4 animate-fade-in">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-left">
+                <label className="block text-sm font-medium text-zinc-400 mb-2 text-left">
                   Valor Inicial (Fundo de Troco)
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">R$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 font-medium">R$</span>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
                     value={floatInput}
                     onChange={(e) => setFloatInput(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-white/10 dark:bg-[#2C2C2E] dark:text-white rounded-lg focus:ring-2 focus:ring-[#BB080E] outline-none text-lg text-gray-900"
+                    className="w-full pl-12 pr-4 py-3 border border-white/10 bg-[#1C1C1E] text-white rounded-xl focus:ring-2 focus:ring-[#FFCC00] outline-none text-lg transition-all"
                     placeholder="0.00"
                     autoFocus
                     onKeyPress={(e) => {
@@ -1012,15 +1084,15 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowOpenInput(false)}
-                  className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-colors"
+                  className="flex-1 py-3 bg-[#1C1C1E] hover:bg-white/5 border border-white/10 text-zinc-400 hover:text-white rounded-2xl font-bold transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={handleOpenShift}
-                  className="flex-1 py-3 bg-[#BB080E] hover:bg-[#9F1226] text-white rounded-xl font-bold shadow-lg shadow-[#BB080E]/20 transition-all transform hover:scale-105"
+                  className="flex-1 py-3 bg-[#FFCC00] hover:bg-[#E5B800] text-black rounded-2xl font-bold shadow-lg shadow-[#FFCC00]/20 transition-all transform hover:scale-[1.02]"
                 >
-                  Confirmar Abertura
+                  Confirmar
                 </button>
               </div>
             </div>
@@ -1100,6 +1172,13 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
               >
                 <History size={18} />
               </button>
+              <button
+                onClick={() => setIsDigitalQueueOpen(true)}
+                className="p-2 bg-[#2C2C2E] rounded-lg text-[#FFCC00] hover:text-yellow-300 transition-colors border border-[#FFCC00]/20"
+                title="Fila Digital"
+              >
+                <Clock size={18} />
+              </button>
             </div>
 
             {/* Search Bar - Desktop Only Here */}
@@ -1114,6 +1193,19 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
               />
             </div>
           </div>
+
+          {/* Fila Digital Indicator (Mobile) */}
+          <button
+            className="md:hidden p-2 text-gray-400 hover:text-white relative mr-1"
+            onClick={() => setIsDigitalQueueOpen(true)}
+          >
+            <Clock size={22} className={digitalQueueCount > 0 ? "text-[#FFCC00]" : "text-gray-400"} />
+            {digitalQueueCount > 0 && (
+              <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#FFCC00] rounded-full flex items-center justify-center border border-[#1C1C1E] shadow-sm animate-bounce-short">
+                <span className="text-[10px] font-bold text-black leading-none">{digitalQueueCount}</span>
+              </div>
+            )}
+          </button>
 
           {/* Mobile: Settings Trigger */}
           <button
@@ -1135,26 +1227,7 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
               className="md:hidden bg-[#1C1C1E] border-b border-white/10 overflow-hidden"
             >
               <div className="p-4 space-y-4">
-                {/* 1. Loja Online Status */}
-                <div className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5">
-                  <div className="flex items-center gap-3">
-                    <Store size={20} className={isStoreOpen ? "text-green-500" : "text-gray-500"} />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-white">Loja Online</span>
-                      <span className="text-[10px] text-gray-400">{isStoreOpen ? 'Recebendo Pedidos' : 'Fechada Temporariamente'}</span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      const newState = !isStoreOpen;
-                      setIsStoreOpen(newState); // Optimistic UI
-                      await toggleStoreStatus(newState);
-                    }}
-                    className={`w-12 h-6 rounded-full p-1 transition-colors ${isStoreOpen ? 'bg-green-500' : 'bg-gray-700'}`}
-                  >
-                    <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${isStoreOpen ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
-                </div>
+                {/* 1. Loja Online Status (REMOVIDO via User Request) */}
 
                 {/* 2. Actions Grid */}
                 <div className="grid grid-cols-2 gap-3">
@@ -1423,6 +1496,13 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
         onReprint={handleReprint}
       />
 
+      {/* Digital Queue Sidebar */}
+      <DigitalQueueSidebar
+        isOpen={isDigitalQueueOpen}
+        onClose={() => setIsDigitalQueueOpen(false)}
+        onImportOrder={handleImportPreOrder}
+      />
+
       {/* 
       <ShiftOrdersSidebar
         isOpen={false}
@@ -1468,13 +1548,15 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
       {
         showCloseSummary && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-            <div className="bg-[#1C1C1E] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-              <div className="p-8 pb-0 text-center">
+            <div className="bg-[#2C2C2E] border border-white/10 rounded-3xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh] overflow-hidden animate-scale-in">
+              {/* Header Fixo */}
+              <div className="p-8 pb-4 text-center flex-none border-b border-white/5 bg-[#2C2C2E]">
                 <h2 className="text-3xl font-bold text-white mb-2">Fechamento de Caixa</h2>
                 <p className="text-gray-400">Resumo do turno atual</p>
               </div>
 
-              <div className="p-8 space-y-6">
+              {/* Conteúdo Scrollável */}
+              <div className="p-8 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
 
                 {/* Saldo Principal */}
                 <div className="text-center mb-8">
@@ -1486,17 +1568,17 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
 
                 {/* Lista de Detalhes */}
                 <div className="space-y-2">
-                  <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center">
+                  <div className="bg-[#1C1C1E] rounded-2xl p-4 flex justify-between items-center">
                     <span className="text-white font-medium">🛒 Vendas (Produtos)</span>
                     <span className="text-white font-bold">R$ {((shiftStats.total || 0) - (shiftStats.deliveryFees || 0)).toFixed(2)}</span>
                   </div>
 
-                  <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center border border-orange-500/20">
+                  <div className="bg-[#1C1C1E] rounded-2xl p-4 flex justify-between items-center border border-orange-500/20">
                     <span className="text-orange-400 font-medium">🛵 Taxas Motoboy</span>
                     <span className="text-orange-400 font-bold">R$ {(shiftStats.deliveryFees || 0).toFixed(2)}</span>
                   </div>
 
-                  <div className="bg-[#2C2C2E] rounded-2xl p-4 flex justify-between items-center border border-green-500/20">
+                  <div className="bg-[#1C1C1E] rounded-2xl p-4 flex justify-between items-center border border-green-500/20">
                     <span className="text-green-400 font-medium">💵 Total em Dinheiro</span>
                     <span className="text-green-400 font-bold">R$ {((currentShift?.initial_float || 0) + (shiftStats.cash || 0)).toFixed(2)}</span>
                   </div>
@@ -1543,30 +1625,30 @@ export const POS: React.FC<POSProps> = ({ user, onLogout, onBackToAdmin }) => {
                     </div>
                   </div>
                 )}
+              </div>
 
-                {/* Botões */}
-                <div className="flex flex-col gap-3 mt-6 pt-4 border-t border-white/5">
+              {/* Footer Fixo (Botões) */}
+              <div className="p-8 pt-4 flex-none bg-[#2C2C2E] border-t border-white/5 space-y-3">
+                <button
+                  onClick={handleSendReportToWhatsApp}
+                  className="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
+                >
+                  <span>📱 Enviar Relatório WhatsApp</span>
+                </button>
+
+                <div className="grid grid-cols-2 gap-3">
                   <button
-                    onClick={handleSendReportToWhatsApp}
-                    className="w-full py-3 bg-green-600 hover:bg-green-500 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
+                    onClick={() => setShowCloseSummary(false)}
+                    className="w-full py-3 bg-transparent border border-white/10 text-gray-400 hover:text-white font-medium rounded-2xl hover:bg-white/5 transition-all text-sm"
                   >
-                    <span>📱 Enviar Relatório WhatsApp</span>
+                    Voltar
                   </button>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setShowCloseSummary(false)}
-                      className="w-full py-3 bg-transparent border border-white/10 text-gray-400 hover:text-white font-medium rounded-2xl hover:bg-white/5 transition-all text-sm"
-                    >
-                      Voltar
-                    </button>
-                    <button
-                      onClick={confirmCloseShift}
-                      className="w-full py-3 bg-[#FFCC00] hover:bg-[#E5B800] text-black font-bold rounded-2xl shadow-lg shadow-[#FFCC00]/20 active:scale-95 transition-all text-sm"
-                    >
-                      Confirmar Fechamento
-                    </button>
-                  </div>
+                  <button
+                    onClick={confirmCloseShift}
+                    className="w-full py-3 bg-[#FFCC00] hover:bg-[#E5B800] text-black font-bold rounded-2xl shadow-lg shadow-[#FFCC00]/20 active:scale-95 transition-all text-sm"
+                  >
+                    Confirmar Fechamento
+                  </button>
                 </div>
               </div>
             </div>

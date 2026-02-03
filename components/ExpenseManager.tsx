@@ -54,8 +54,19 @@ export const ExpenseManager: React.FC = () => {
     const fetchExpenses = async () => {
         setLoading(true);
         try {
+            const [yearStr, monthStr] = selectedMonth.split('-');
+            const year = parseInt(yearStr);
+            const month = parseInt(monthStr);
+            const lastDay = new Date(year, month, 0).getDate();
+
+            if (isNaN(year) || isNaN(month)) {
+                console.warn("Mês selecionado inválido");
+                setLoading(false);
+                return;
+            }
+
             const startOfMonth = `${selectedMonth}-01`;
-            const endOfMonth = `${selectedMonth}-31`;
+            const endOfMonth = `${selectedMonth}-${lastDay}`;
 
             const { data, error } = await supabase
                 .from('expenses')

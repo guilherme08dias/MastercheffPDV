@@ -2,7 +2,7 @@ export type ShiftStatus = 'open' | 'closed';
 export type ProductCategory = 'xis' | 'dog' | 'hotdog' | 'bebida' | 'porcoes' | 'side';
 export type OrderType = 'local' | 'takeaway' | 'delivery';
 export type PaymentMethod = 'cash' | 'credit' | 'debit' | 'pix';
-export type OrderStatus = 'pending' | 'completed' | 'canceled';
+export type OrderStatus = 'pending' | 'completed' | 'canceled' | 'pre_venda';
 export type UserRole = 'admin' | 'cashier';
 
 export interface Profile {

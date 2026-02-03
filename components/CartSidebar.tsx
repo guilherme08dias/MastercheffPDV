@@ -19,6 +19,7 @@ interface CartSidebarProps {
   setCustomerName: (name: string) => void;
   isOpen: boolean;
   onClose: () => void;
+  isSelfService?: boolean; // New Prop
 }
 
 export const CartSidebar: React.FC<CartSidebarProps> = ({
@@ -30,7 +31,8 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({
   customerName,
   setCustomerName,
   isOpen,
-  onClose
+  onClose,
+  isSelfService = false
 }) => {
   const [selectedNeighborhoodId, setSelectedNeighborhoodId] = useState<string>('');
   const [orderType, setOrderType] = useState<OrderType>('local');
@@ -86,8 +88,15 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({
       console.warn("Validação falhou: Nome do cliente vazio");
       return alert("Digite o nome do cliente.");
     }
-    if (orderType === 'delivery' && !selectedNeighborhood) return alert("Selecione um bairro.");
 
+    // Self-Service Validations
+    if (isSelfService) {
+      // @ts-ignore
+      onCheckout(customerName, 'local', 'cash', null, undefined);
+      return;
+    }
+
+    if (orderType === 'delivery' && !selectedNeighborhood) return alert("Selecione um bairro.");
     if (!paymentMethod) return alert("Selecione a forma de pagamento!");
 
     // @ts-ignore
@@ -197,103 +206,106 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({
         {/* Footer / Checkout */}
         <div className="p-6 bg-[#1C1C1E] border-t border-white/10 z-10 space-y-4 shadow-2xl">
 
-          {/* Compact Grid for Type & Payment (Side-by-Side) */}
-          <div className="grid grid-cols-2 gap-3 relative z-30">
+          {!isSelfService && (
+            /* Compact Grid for Type & Payment (Side-by-Side) */
+            <div className="grid grid-cols-2 gap-3 relative z-30">
+              {/* Type & Payment Dropdowns... (Preserved logic, wrapped) */}
+              {/* 1. Order Type Dropup */}
+              <div className="relative">
+                <button
+                  onClick={() => { setIsTypeOpen(!isTypeOpen); setIsPaymentOpen(false); }}
+                  className="w-full py-3 px-3 bg-[#2C2C2E] border-none rounded-xl flex items-center justify-between shadow-sm hover:bg-[#38383A] transition-all"
+                >
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    {orderType === 'local' && <UtensilsCrossed size={16} className="text-[#FFCC00] shrink-0" />}
+                    {orderType === 'takeaway' && <ShoppingBag size={16} className="text-blue-500 shrink-0" />}
+                    {orderType === 'delivery' && <Bike size={16} className="text-orange-500 shrink-0" />}
 
-            {/* 1. Order Type Dropup */}
-            <div className="relative">
-              <button
-                onClick={() => { setIsTypeOpen(!isTypeOpen); setIsPaymentOpen(false); }}
-                className="w-full py-3 px-3 bg-[#2C2C2E] border-none rounded-xl flex items-center justify-between shadow-sm hover:bg-[#38383A] transition-all"
-              >
-                <div className="flex items-center gap-2 overflow-hidden">
-                  {orderType === 'local' && <UtensilsCrossed size={16} className="text-[#FFCC00] shrink-0" />}
-                  {orderType === 'takeaway' && <ShoppingBag size={16} className="text-blue-500 shrink-0" />}
-                  {orderType === 'delivery' && <Bike size={16} className="text-orange-500 shrink-0" />}
-
-                  <div className="flex flex-col items-start truncate">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase leading-none">Tipo</span>
-                    <span className="text-xs font-bold text-white truncate">
-                      {orderType === 'local' && 'Mesa'}
-                      {orderType === 'takeaway' && 'Balcão'}
-                      {orderType === 'delivery' && 'Entrega'}
-                    </span>
+                    <div className="flex flex-col items-start truncate">
+                      <span className="text-[10px] text-gray-500 font-bold uppercase leading-none">Tipo</span>
+                      <span className="text-xs font-bold text-white truncate">
+                        {orderType === 'local' && 'Mesa'}
+                        {orderType === 'takeaway' && 'Balcão'}
+                        {orderType === 'delivery' && 'Entrega'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isTypeOpen ? 'rotate-180' : ''}`} />
-              </button>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isTypeOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-              {isTypeOpen && (
-                <div className="absolute bottom-full left-0 w-full mb-2 bg-[#2C2C2E] rounded-xl shadow-xl border border-white/10 overflow-hidden animate-fade-in divide-y divide-white/5">
-                  <button onClick={() => { setOrderType('local'); setIsTypeOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
-                    <UtensilsCrossed size={16} className="text-[#FFCC00]" />
-                    <span className="text-sm font-medium">Mesa</span>
-                  </button>
-                  <button onClick={() => { setOrderType('takeaway'); setIsTypeOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
-                    <ShoppingBag size={16} className="text-blue-500" />
-                    <span className="text-sm font-medium">Balcão</span>
-                  </button>
-                  <button onClick={() => { setOrderType('delivery'); setIsTypeOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
-                    <Bike size={16} className="text-orange-500" />
-                    <span className="text-sm font-medium">Entrega</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 2. Payment Method Dropup */}
-            <div className="relative">
-              <button
-                onClick={() => { setIsPaymentOpen(!isPaymentOpen); setIsTypeOpen(false); }}
-                className={`w-full py-3 px-3 border-none rounded-xl flex items-center justify-between shadow-sm transition-all ${!paymentMethod
-                  ? 'bg-red-900/20 border-red-500/30 text-red-400 animate-pulse-slow'
-                  : 'bg-[#2C2C2E] hover:bg-[#38383A] text-white'
-                  }`}
-              >
-                <div className="flex items-center gap-2 overflow-hidden">
-                  {!paymentMethod && <div className="w-4 h-4 rounded-full bg-red-400 shrink-0" />}
-                  {paymentMethod === 'cash' && <Banknote size={16} className="text-green-500 shrink-0" />}
-                  {paymentMethod === 'pix' && <QrCode size={16} className="text-emerald-500 shrink-0" />}
-                  {paymentMethod === 'credit' && <CreditCard size={16} className="text-blue-500 shrink-0" />}
-                  {paymentMethod === 'debit' && <CreditCard size={16} className="text-cyan-500 shrink-0" />}
-
-                  <div className="flex flex-col items-start truncate">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase leading-none">Pagamento</span>
-                    <span className={`text-xs font-bold truncate ${!paymentMethod ? 'text-red-400' : 'text-white'}`}>
-                      {!paymentMethod && 'Selecionar...'}
-                      {paymentMethod === 'cash' && 'Dinheiro'}
-                      {paymentMethod === 'pix' && 'PIX'}
-                      {paymentMethod === 'credit' && 'Crédito'}
-                      {paymentMethod === 'debit' && 'Débito'}
-                    </span>
+                {isTypeOpen && (
+                  <div className="absolute bottom-full left-0 w-full mb-2 bg-[#2C2C2E] rounded-xl shadow-xl border border-white/10 overflow-hidden animate-fade-in divide-y divide-white/5">
+                    <button onClick={() => { setOrderType('local'); setIsTypeOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
+                      <UtensilsCrossed size={16} className="text-[#FFCC00]" />
+                      <span className="text-sm font-medium">Mesa</span>
+                    </button>
+                    <button onClick={() => { setOrderType('takeaway'); setIsTypeOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
+                      <ShoppingBag size={16} className="text-blue-500" />
+                      <span className="text-sm font-medium">Balcão</span>
+                    </button>
+                    <button onClick={() => { setOrderType('delivery'); setIsTypeOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
+                      <Bike size={16} className="text-orange-500" />
+                      <span className="text-sm font-medium">Entrega</span>
+                    </button>
                   </div>
-                </div>
-                <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isPaymentOpen ? 'rotate-180' : ''}`} />
-              </button>
+                )}
+              </div>
 
-              {isPaymentOpen && (
-                <div className="absolute bottom-full right-0 w-full mb-2 bg-[#2C2C2E] rounded-xl shadow-xl border border-white/10 overflow-hidden animate-fade-in divide-y divide-white/5">
-                  <button onClick={() => { setPaymentMethod('cash'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
-                    <Banknote size={16} className="text-green-500" />
-                    <span className="text-sm font-medium">Dinheiro</span>
-                  </button>
-                  <button onClick={() => { setPaymentMethod('pix'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
-                    <QrCode size={16} className="text-emerald-500" />
-                    <span className="text-sm font-medium">PIX</span>
-                  </button>
-                  <button onClick={() => { setPaymentMethod('credit'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
-                    <CreditCard size={16} className="text-blue-500" />
-                    <span className="text-sm font-medium">Crédito</span>
-                  </button>
-                  <button onClick={() => { setPaymentMethod('debit'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
-                    <CreditCard size={16} className="text-cyan-500" />
-                    <span className="text-sm font-medium">Débito</span>
-                  </button>
-                </div>
-              )}
+              {/* 2. Payment Method Dropup */}
+              <div className="relative">
+                <button
+                  onClick={() => { setIsPaymentOpen(!isPaymentOpen); setIsTypeOpen(false); }}
+                  className={`w-full py-3 px-3 border-none rounded-xl flex items-center justify-between shadow-sm transition-all ${!paymentMethod
+                    ? 'bg-red-900/20 border-red-500/30 text-red-400 animate-pulse-slow'
+                    : 'bg-[#2C2C2E] hover:bg-[#38383A] text-white'
+                    }`}
+                >
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    {!paymentMethod && <div className="w-4 h-4 rounded-full bg-red-400 shrink-0" />}
+                    {paymentMethod === 'cash' && <Banknote size={16} className="text-green-500 shrink-0" />}
+                    {paymentMethod === 'pix' && <QrCode size={16} className="text-emerald-500 shrink-0" />}
+                    {paymentMethod === 'credit' && <CreditCard size={16} className="text-blue-500 shrink-0" />}
+                    {paymentMethod === 'debit' && <CreditCard size={16} className="text-cyan-500 shrink-0" />}
+
+                    <div className="flex flex-col items-start truncate">
+                      <span className="text-[10px] text-gray-500 font-bold uppercase leading-none">Pagamento</span>
+                      <span className={`text-xs font-bold truncate ${!paymentMethod ? 'text-red-400' : 'text-white'}`}>
+                        {!paymentMethod && 'Selecionar...'}
+                        {paymentMethod === 'cash' && 'Dinheiro'}
+                        {paymentMethod === 'pix' && 'PIX'}
+                        {paymentMethod === 'credit' && 'Crédito'}
+                        {paymentMethod === 'debit' && 'Débito'}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform duration-300 ${isPaymentOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isPaymentOpen && (
+                  <div className="absolute bottom-full right-0 w-full mb-2 bg-[#2C2C2E] rounded-xl shadow-xl border border-white/10 overflow-hidden animate-fade-in divide-y divide-white/5">
+                    <button onClick={() => { setPaymentMethod('cash'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
+                      <Banknote size={16} className="text-green-500" />
+                      <span className="text-sm font-medium">Dinheiro</span>
+                    </button>
+                    <button onClick={() => { setPaymentMethod('pix'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
+                      <QrCode size={16} className="text-emerald-500" />
+                      <span className="text-sm font-medium">PIX</span>
+                    </button>
+                    <button onClick={() => { setPaymentMethod('credit'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
+                      <CreditCard size={16} className="text-blue-500" />
+                      <span className="text-sm font-medium">Crédito</span>
+                    </button>
+                    <button onClick={() => { setPaymentMethod('debit'); setIsPaymentOpen(false); }} className="w-full flex items-center gap-3 p-3 hover:bg-white/5 text-left text-white">
+                      <CreditCard size={16} className="text-cyan-500" />
+                      <span className="text-sm font-medium">Débito</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-          {orderType === 'delivery' && (
+          )}
+
+          {!isSelfService && orderType === 'delivery' && (
             <div className="relative animate-fade-in">
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <select
@@ -311,49 +323,51 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({
           )}
 
           {/* Widget de Desconto */}
-          <div className="mb-3">
-            <button
-              onClick={() => setIsDiscountOpen(!isDiscountOpen)}
-              className="text-xs font-bold text-[#FFCC00] hover:text-[#E5B800] underline mb-2 flex items-center gap-1"
-            >
-              {isDiscountOpen ? 'Remover Desconto' : 'Adicionar Desconto / Cupom'}
-            </button>
+          {!isSelfService && (
+            <div className="mb-3">
+              <button
+                onClick={() => setIsDiscountOpen(!isDiscountOpen)}
+                className="text-xs font-bold text-[#FFCC00] hover:text-[#E5B800] underline mb-2 flex items-center gap-1"
+              >
+                {isDiscountOpen ? 'Remover Desconto' : 'Adicionar Desconto / Cupom'}
+              </button>
 
-            {isDiscountOpen && (
-              <div className="bg-[#2C2C2E] p-3 rounded-xl border border-dashed border-white/10 animate-fade-in">
-                <div className="flex gap-2 mb-2">
-                  <div className="flex bg-[#1C1C1E] rounded-lg p-1 border border-white/10 shrink-0">
-                    <button
-                      onClick={() => setDiscountType('fixed')}
-                      className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${discountType === 'fixed' ? 'bg-[#FFCC00] text-black shadow-sm' : 'text-gray-500 hover:bg-white/10'}`}
-                    >
-                      R$
-                    </button>
-                    <button
-                      onClick={() => setDiscountType('percentage')}
-                      className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${discountType === 'percentage' ? 'bg-[#FFCC00] text-black shadow-sm' : 'text-gray-500 hover:bg-white/10'}`}
-                    >
-                      %
-                    </button>
+              {isDiscountOpen && (
+                <div className="bg-[#2C2C2E] p-3 rounded-xl border border-dashed border-white/10 animate-fade-in">
+                  <div className="flex gap-2 mb-2">
+                    <div className="flex bg-[#1C1C1E] rounded-lg p-1 border border-white/10 shrink-0">
+                      <button
+                        onClick={() => setDiscountType('fixed')}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${discountType === 'fixed' ? 'bg-[#FFCC00] text-black shadow-sm' : 'text-gray-500 hover:bg-white/10'}`}
+                      >
+                        R$
+                      </button>
+                      <button
+                        onClick={() => setDiscountType('percentage')}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition-colors ${discountType === 'percentage' ? 'bg-[#FFCC00] text-black shadow-sm' : 'text-gray-500 hover:bg-white/10'}`}
+                      >
+                        %
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      placeholder={discountType === 'fixed' ? "0,00" : "0%"}
+                      className="flex-1 bg-[#1C1C1E] border-none rounded-lg px-3 text-sm focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
+                      value={discountValue}
+                      onChange={(e) => setDiscountValue(e.target.value)}
+                    />
                   </div>
                   <input
-                    type="number"
-                    placeholder={discountType === 'fixed' ? "0,00" : "0%"}
-                    className="flex-1 bg-[#1C1C1E] border-none rounded-lg px-3 text-sm focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
-                    value={discountValue}
-                    onChange={(e) => setDiscountValue(e.target.value)}
+                    type="text"
+                    placeholder="Motivo (opcional)"
+                    className="w-full bg-[#1C1C1E] border-none rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
                   />
                 </div>
-                <input
-                  type="text"
-                  placeholder="Motivo (opcional)"
-                  className="w-full bg-[#1C1C1E] border-none rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-[#FFCC00] outline-none text-white"
-                  value={discountReason}
-                  onChange={(e) => setDiscountReason(e.target.value)}
-                />
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Totals */}
           <div className="space-y-2 pt-2">
@@ -382,14 +396,14 @@ export const CartSidebar: React.FC<CartSidebarProps> = ({
           {/* Checkout Button */}
           <button
             onClick={handleCheckoutClick}
-            disabled={isLoading || (orderType === 'delivery' && !selectedNeighborhood) || !paymentMethod}
+            disabled={isLoading || (!isSelfService && ((orderType === 'delivery' && !selectedNeighborhood) || !paymentMethod))}
             className="w-full py-4 bg-[#FFCC00] hover:bg-[#E5B800] text-black rounded-2xl font-semibold text-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <Loader2 className="animate-spin" />
             ) : (
               <>
-                <span>Finalizar Pedido</span>
+                <span>{isSelfService ? "ENVIAR PARA O CAIXA" : "Finalizar Pedido"}</span>
                 <ArrowRight size={20} />
               </>
             )}

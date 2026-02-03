@@ -4,21 +4,43 @@
 
 @layer base {
   body {
-    @apply bg-black text-white antialiased;
+    @apply text-white antialiased;
+    background-color: #1C1C1E;
   }
 }
 
 /* Yellow-Safety Enforcement */
 /* Garante que qualquer elemento com fundo amarelo da marca tenha texto preto para contraste AAA */
-.bg-brand-500 {
-    color: black !important;
+.bg-brand-500,
+.bg-action {
+  color: black !important;
 }
 
 /* Custom Utilities */
 .scrollbar-hide::-webkit-scrollbar {
-    display: none;
+  display: none;
 }
+
 .scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Micro-Animations */
+@keyframes bounce-short {
+
+  0%,
+  100% {
+    transform: translateY(-5%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+
+.animate-bounce-short {
+  animation: bounce-short 1s infinite;
 }

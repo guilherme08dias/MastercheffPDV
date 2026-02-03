@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { TrendingUp, Calendar, Search, Loader2, DollarSign, ShoppingBag, Info } from 'lucide-react';
+import { TrendingUp, Calendar, Search, Loader2, DollarSign, ShoppingBag, Info, Award } from 'lucide-react';
 import { SalesRanking } from './SalesRanking';
 import { LineChart, Line, XAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getBrasiliaDate } from '../utils/dateUtils';
@@ -70,6 +70,12 @@ export const SalesReports: React.FC = () => {
             // Adjust dates to include the full day in local time
             const queryStartDate = new Date(`${startDate}T00:00:00`);
             const queryEndDate = new Date(`${endDate}T23:59:59.999`);
+
+            if (isNaN(queryStartDate.getTime()) || isNaN(queryEndDate.getTime())) {
+                console.error("Invalid dates selected");
+                setLoading(false);
+                return;
+            }
 
             console.log("SalesReports: Fetching data between", startDate, "and", endDate);
 
@@ -306,55 +312,58 @@ export const SalesReports: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            {/* Header and Filters */}
-            {activeTab === 'sales' && (
-                <div className="flex flex-col gap-4 bg-[#1C1C1E] p-4 md:p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div>
-                            <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
-                                <TrendingUp className="w-6 h-6 text-[#FFCC00]" />
-                                Relatórios de Vendas
-                            </h2>
-                            <div className="flex flex-col md:flex-row md:items-center gap-2 mt-1">
-                                <p className="text-gray-400 text-sm">Acompanhe o desempenho do seu negócio</p>
-                                <span className="w-fit px-2 py-0.5 bg-green-900/30 text-green-400 text-[10px] font-bold rounded-full border border-green-800 flex items-center gap-1">
-                                    <Info size={10} />
-                                    Timezone: Brasília (Active)
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="w-full md:w-auto flex flex-col md:flex-row items-center gap-2 bg-[#2C2C2E] p-3 md:p-2 rounded-xl md:rounded-lg border border-white/10">
-                            <div className="flex items-center gap-2 w-full md:w-auto">
-                                <Calendar className="w-5 h-5 text-gray-400 shrink-0" />
-                                <div className="flex items-center gap-2 w-full">
-                                    <input
-                                        type="date"
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="bg-transparent border-none text-sm focus:ring-0 text-white w-full"
-                                    />
-                                    <span className="text-gray-400">-</span>
-                                    <input
-                                        type="date"
-                                        value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="bg-transparent border-none text-sm focus:ring-0 text-white w-full"
-                                    />
-                                </div>
-                            </div>
-                            <button
-                                onClick={fetchData}
-                                className="w-full md:w-auto p-2 bg-[#FFCC00] text-black rounded-lg hover:bg-[#E5B800] transition-colors flex items-center justify-center font-bold"
-                                title="Atualizar"
-                            >
-                                <Search className="w-4 h-4 md:mr-0 mr-2" />
-                                <span className="md:hidden">Buscar</span>
-                            </button>
+            {/* Header and Filters (Global) */}
+            <div className="flex flex-col gap-4 bg-[#1C1C1E] p-4 md:p-6 rounded-2xl shadow-sm border border-white/10 transition-colors">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
+                            {activeTab === 'sales' ? (
+                                <><TrendingUp className="w-6 h-6 text-[#FFCC00]" /> Relatórios de Vendas</>
+                            ) : (
+                                <><Award className="w-6 h-6 text-[#FFCC00]" /> Ranking de Produtos</>
+                            )}
+                        </h2>
+                        <div className="flex flex-col md:flex-row md:items-center gap-2 mt-1">
+                            <p className="text-gray-400 text-sm">
+                                {activeTab === 'sales' ? 'Acompanhe o desempenho do seu negócio' : 'Analise os itens mais vendidos'}
+                            </p>
+                            <span className="w-fit px-2 py-0.5 bg-green-900/30 text-green-400 text-[10px] font-bold rounded-full border border-green-800 flex items-center gap-1">
+                                <Info size={10} />
+                                Timezone: Brasília (Active)
+                            </span>
                         </div>
                     </div>
+
+                    <div className="w-full md:w-auto flex flex-col md:flex-row items-center gap-2 bg-[#2C2C2E] p-3 md:p-2 rounded-xl md:rounded-lg border border-white/10">
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                            <Calendar className="w-5 h-5 text-gray-400 shrink-0" />
+                            <div className="flex items-center gap-2 w-full">
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="bg-transparent border-none text-sm focus:ring-0 text-white w-full"
+                                />
+                                <span className="text-gray-400">-</span>
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="bg-transparent border-none text-sm focus:ring-0 text-white w-full"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            onClick={fetchData}
+                            className="w-full md:w-auto p-2 bg-[#FFCC00] text-black rounded-lg hover:bg-[#E5B800] transition-colors flex items-center justify-center font-bold"
+                            title="Atualizar"
+                        >
+                            <Search className="w-4 h-4 md:mr-0 mr-2" />
+                            <span className="md:hidden">Buscar</span>
+                        </button>
+                    </div>
                 </div>
-            )}
+            </div>
 
             {/* Tab Navigation */}
             <div className="flex gap-2">
@@ -373,7 +382,7 @@ export const SalesReports: React.FC = () => {
             </div>
 
             {activeTab === 'ranking' ? (
-                <SalesRanking />
+                <SalesRanking startDate={startDate} endDate={endDate} />
             ) : (
                 <>
                     {/* Existing Sales Content Starts Here */}
@@ -475,59 +484,65 @@ export const SalesReports: React.FC = () => {
                                         <div className="lg:col-span-8 bg-[#1C1C1E] p-6 rounded-2xl shadow-sm border border-white/5 transition-all duration-300 hover:border-white/10 flex flex-col h-full min-h-[400px]">
                                             <h3 className="text-lg font-bold text-white mb-6 tracking-tight">Receitas vs Despesas</h3>
                                             <div className="flex-1 w-full min-h-0">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <LineChart data={chartData}>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
-                                                        <XAxis
-                                                            dataKey="dayName"
-                                                            axisLine={false}
-                                                            tickLine={false}
-                                                            tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                                                            dy={10}
-                                                        />
-                                                        <Tooltip
-                                                            contentStyle={{
-                                                                backgroundColor: '#1F2937',
-                                                                border: 'none',
-                                                                borderRadius: '8px',
-                                                                color: '#F3F4F6'
-                                                            }}
-                                                            itemStyle={{ color: '#F3F4F6' }}
-                                                            formatter={(value: number, name: string, props: any) => {
-                                                                const label = props.dataKey === 'total' ? 'Receitas' : name;
-                                                                return [`R$ ${value.toFixed(2)}`, label];
-                                                            }}
-                                                            labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
-                                                        />
-                                                        <Legend
-                                                            wrapperStyle={{ paddingTop: '20px' }}
-                                                            iconType="line"
-                                                            formatter={(value: string) => (
-                                                                <span style={{ color: '#9CA3AF', fontSize: '14px' }}>{value}</span>
-                                                            )}
-                                                        />
-                                                        <Line
-                                                            type="monotone"
-                                                            dataKey="total"
-                                                            stroke="#10b981" // Green-500
-                                                            strokeWidth={3}
-                                                            dot={{ fill: '#10b981', strokeWidth: 2, r: 4, stroke: '#fff' }}
-                                                            activeDot={{ r: 6, strokeWidth: 0 }}
-                                                            connectNulls={true}
-                                                            name="Receitas"
-                                                        />
-                                                        <Line
-                                                            type="monotone"
-                                                            dataKey="expenses"
-                                                            stroke="#ef4444" // Red-500
-                                                            strokeWidth={3}
-                                                            dot={{ fill: '#ef4444', strokeWidth: 2, r: 4, stroke: '#fff' }}
-                                                            activeDot={{ r: 6, strokeWidth: 0 }}
-                                                            connectNulls={true}
-                                                            name="Despesas"
-                                                        />
-                                                    </LineChart>
-                                                </ResponsiveContainer>
+                                                {chartData.length > 0 ? (
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <LineChart data={chartData}>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
+                                                            <XAxis
+                                                                dataKey="dayName"
+                                                                axisLine={false}
+                                                                tickLine={false}
+                                                                tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                                                                dy={10}
+                                                            />
+                                                            <Tooltip
+                                                                contentStyle={{
+                                                                    backgroundColor: '#1F2937',
+                                                                    border: 'none',
+                                                                    borderRadius: '8px',
+                                                                    color: '#F3F4F6'
+                                                                }}
+                                                                itemStyle={{ color: '#F3F4F6' }}
+                                                                formatter={(value: number, name: string, props: any) => {
+                                                                    const label = props.dataKey === 'total' ? 'Receitas' : name;
+                                                                    return [`R$ ${value.toFixed(2)}`, label];
+                                                                }}
+                                                                labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
+                                                            />
+                                                            <Legend
+                                                                wrapperStyle={{ paddingTop: '20px' }}
+                                                                iconType="line"
+                                                                formatter={(value: string) => (
+                                                                    <span style={{ color: '#9CA3AF', fontSize: '14px' }}>{value}</span>
+                                                                )}
+                                                            />
+                                                            <Line
+                                                                type="monotone"
+                                                                dataKey="total"
+                                                                stroke="#10b981" // Green-500
+                                                                strokeWidth={3}
+                                                                dot={{ fill: '#10b981', strokeWidth: 2, r: 4, stroke: '#fff' }}
+                                                                activeDot={{ r: 6, strokeWidth: 0 }}
+                                                                connectNulls={true}
+                                                                name="Receitas"
+                                                            />
+                                                            <Line
+                                                                type="monotone"
+                                                                dataKey="expenses"
+                                                                stroke="#ef4444" // Red-500
+                                                                strokeWidth={3}
+                                                                dot={{ fill: '#ef4444', strokeWidth: 2, r: 4, stroke: '#fff' }}
+                                                                activeDot={{ r: 6, strokeWidth: 0 }}
+                                                                connectNulls={true}
+                                                                name="Despesas"
+                                                            />
+                                                        </LineChart>
+                                                    </ResponsiveContainer>
+                                                ) : (
+                                                    <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                                                        Sem dados para exibir
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 

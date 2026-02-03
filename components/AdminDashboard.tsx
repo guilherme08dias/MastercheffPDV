@@ -393,7 +393,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigate
                     <div key={order.id} className="flex justify-between items-center p-3 bg-[#2C2C2E]/50 rounded-xl border border-white/5">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-[#3A3A3C] flex items-center justify-center text-white font-bold text-sm shrink-0">
-                          #{order.daily_number || 0}
+                          #{order.daily_number || order.id}
                         </div>
                         <div>
                           <div className="flex items-center gap-2 mb-0.5">
@@ -439,7 +439,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onNavigate
                   <tbody className="text-sm divide-y divide-white/5">
                     {stats.recentOrders.slice(0, 50).map((order) => (
                       <tr key={order.id} className="hover:bg-[#2C2C2E] transition-colors group">
-                        <td className="py-3 px-6 font-bold text-white">#{order.daily_number}</td>
+                        <td className="py-3 px-6 font-bold text-white">#{order.daily_number || order.id}</td>
                         <td className="py-3 px-6 text-gray-300">{removeAccents(order.customer_name || 'Cliente')}</td>
                         <td className="py-3 px-6 text-center">
                           <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${order.type === 'delivery' ? 'bg-blue-900/20 text-blue-400 border border-blue-500/20' : 'bg-green-900/20 text-green-400 border border-green-500/20'}`}>

@@ -12,17 +12,12 @@ interface SalesRankingItem {
     rank: number;
 }
 
-export const SalesRanking: React.FC = () => {
-    // Dates
-    const [startDate, setStartDate] = useState(() => {
-        const date = new Date(getBrasiliaDate());
-        date.setDate(1); // 1st of current month
-        return date.toISOString().split('T')[0];
-    });
-    const [endDate, setEndDate] = useState(() => {
-        return getBrasiliaDate(); // Today
-    });
+interface SalesRankingProps {
+    startDate: string;
+    endDate: string;
+}
 
+export const SalesRanking: React.FC<SalesRankingProps> = ({ startDate, endDate }) => {
     // Content
     const [ranking, setRanking] = useState<SalesRankingItem[]>([]);
     const [loading, setLoading] = useState(false);
@@ -77,12 +72,6 @@ export const SalesRanking: React.FC = () => {
     });
 
     const handleClearFilters = () => {
-        setStartDate(() => {
-            const date = new Date(getBrasiliaDate());
-            date.setDate(1);
-            return date.toISOString().split('T')[0];
-        });
-        setEndDate(getBrasiliaDate());
         setSelectedCategory('Todos');
         setSortOrder('desc');
         fetchRanking();
@@ -102,24 +91,6 @@ export const SalesRanking: React.FC = () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                        {/* Date Picker */}
-                        <div className="flex items-center gap-2 bg-[#2C2C2E] p-2 rounded-lg border border-white/10 flex-1 md:flex-initial">
-                            <Calendar size={16} className="text-gray-400" />
-                            <input
-                                type="date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="bg-transparent border-none text-xs focus:ring-0 text-white p-0 w-24"
-                            />
-                            <span className="text-gray-500">-</span>
-                            <input
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="bg-transparent border-none text-xs focus:ring-0 text-white p-0 w-24"
-                            />
-                        </div>
-
                         {/* Sort Toggle */}
                         <button
                             onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}

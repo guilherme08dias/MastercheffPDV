@@ -25,7 +25,12 @@ export default {
                     gray4: '#48484A',
                     gray5: '#636366',
                     gray6: '#8E8E93',
-                }
+                },
+                // Design System Semantic Tokens
+                'primary-bg': '#1C1C1E', // Night Carbon
+                'surface': '#2C2C2E',    // Elevated Grey
+                'action': '#FFCC00',     // Safety Yellow
+                'success': '#10B981',    // Emerald Green
             },
             backdropBlur: {
                 'xl': '24px',

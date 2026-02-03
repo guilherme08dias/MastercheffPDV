@@ -44,7 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onL
             {/* Logo */}
             <div className="p-6 flex items-center gap-3 justify-center md:justify-start">
                 <div className="w-10 h-10 relative flex-shrink-0">
-                    <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+                    <img src="/card_logo.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <h1 className="hidden md:block font-bold text-xl text-white tracking-tight whitespace-nowrap overflow-hidden">MasterPedidos</h1>
             </div>

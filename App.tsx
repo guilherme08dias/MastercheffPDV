@@ -5,12 +5,13 @@ import { POS } from './components/POS';
 import { LoginScreen } from './components/LoginScreen';
 import { AdminDashboard } from './components/AdminDashboard';
 import { Cardapio } from './components/Cardapio';
+import { SelfService } from './components/SelfService';
 import { Profile, UserRole } from './types';
 import { Loader2 } from 'lucide-react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { Toaster } from 'react-hot-toast';
 
-type AppView = 'login' | 'pos' | 'admin' | 'cardapio';
+type AppView = 'login' | 'pos' | 'admin' | 'cardapio' | 'selfservice';
 
 import { MobileTabBar } from './components/MobileTabBar';
 import { ConnectivityBadge } from './components/ConnectivityBadge';
@@ -32,6 +33,12 @@ const App: React.FC = () => {
     // Customer menu route only
     if (path === '/pedido') {
       setCurrentView('cardapio');
+      setLoading(false);
+      return;
+    }
+
+    if (path === '/autoatendimento') {
+      setCurrentView('selfservice');
       setLoading(false);
       return;
     }
@@ -137,6 +144,15 @@ const App: React.FC = () => {
     return (
       <ThemeProvider>
         <Cardapio />
+        <Toaster position="top-center" />
+      </ThemeProvider>
+    );
+  }
+
+  if (currentView === 'selfservice') {
+    return (
+      <ThemeProvider>
+        <SelfService />
         <Toaster position="top-center" />
       </ThemeProvider>
     );

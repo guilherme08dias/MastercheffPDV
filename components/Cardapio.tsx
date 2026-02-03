@@ -63,7 +63,8 @@ export const Cardapio: React.FC = () => {
 
     // Estado do Turno (Shift)
     const [activeShift, setActiveShift] = useState<any>(null);
-    const [isStoreOpen, setIsStoreOpen] = useState(false);
+    const [isStoreOpen, setIsStoreOpen] = useState<boolean | null>(null);
+    const [hasEntered, setHasEntered] = useState(false); // SPLASH SCREEN STATE
 
     // Estado de Áreas de Entrega
     const [deliveryAreas, setDeliveryAreas] = useState<any[]>([]);
@@ -87,9 +88,20 @@ export const Cardapio: React.FC = () => {
 
 
     useEffect(() => {
+        // 🔥 V4: SESSION PURGE ON MOUNT
+        // Ensures no stale state from previous sessions persists
+        try {
+            sessionStorage.clear();
+            // We don't clear localStorage entirely as it might have useful persistent data,
+            // but we could if needed. For now, assuming session issue.
+            // localStorage.removeItem('supabase.auth.token'); // Example if auth was issue
+        } catch (e) {
+            console.error('Storage clear error', e);
+        }
+
         fetchData();
         fetchStockAndIngredients();
-        checkStoreStatus();
+        // checkStoreStatus(); // REMOVED: Now called on user interaction (Splash Screen)
 
         // Realtime subscription for Shift Status
         const shiftSubscription = supabase
@@ -100,9 +112,6 @@ export const Cardapio: React.FC = () => {
             })
             .subscribe();
 
-        return () => {
-            supabase.removeChannel(shiftSubscription);
-        };
         return () => {
             supabase.removeChannel(shiftSubscription);
         };
@@ -145,30 +154,53 @@ export const Cardapio: React.FC = () => {
 
     // ... (rest of useEffects)
 
+    // Debug State
+    const [debugInfo, setDebugInfo] = useState<string>('');
+
     const checkStoreStatus = async () => {
         try {
+            // 🔥 V5: SIMPLEST POSSIBLE QUERY (Latest Open Shift)
+            // Orders by opened_at desc to get the most recent one if multiple exist (zombie shifts)
+
             const { data: shift, error } = await supabase
                 .from('shifts')
                 .select('*')
                 .eq('status', 'open')
+                .order('opened_at', { ascending: false })
+                .limit(1)
                 .maybeSingle();
 
             if (error) {
                 console.error('Error fetching shift:', error);
+                setDebugInfo(`Erro Banco: ${error.message} (${error.code})`);
             }
 
             if (shift) {
                 setActiveShift(shift);
                 setIsStoreOpen(true);
+                setDebugInfo(`Aberto! Shift ID: ${shift.id.slice(0, 4)}...`);
             } else {
                 setIsStoreOpen(false);
                 setActiveShift(null);
+                setDebugInfo((prev) => prev ? prev : `Banco retornou ZERO turnos abertos.`);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error checking store status:', err);
-            // Safety: If api fails, don't lock the store if possible? No, safer to lock or retry.
-            // Lets retry once if needed or just log.
+            // Safety fallbacks
+            setIsStoreOpen(false);
+            setDebugInfo(`Erro Catastrófico: ${err?.message || JSON.stringify(err)}`);
         }
+    };
+
+    // Debug Fetch Time
+    const [fetchTime, setFetchTime] = useState<string>('');
+
+    const handleEnterStore = async () => {
+        setLoading(true); // Reuse loading state for splash transition
+        setFetchTime(new Date().toLocaleTimeString()); // Debug timestamp
+        await checkStoreStatus();
+        setHasEntered(true);
+        setLoading(false);
     };
 
     const fetchData = async () => {
@@ -227,8 +259,13 @@ export const Cardapio: React.FC = () => {
     };
 
     const addToCart = (item: CartItem) => {
-        if (!isStoreOpen) {
+        if (isStoreOpen === false) {
             alert('A loja está fechada no momento! Aguarde a abertura do caixa.');
+            return;
+        }
+        if (isStoreOpen === null) {
+            alert('Verificando status da loja... Tente novamente em instantes.');
+            checkStoreStatus(); // Retry check
             return;
         }
         if (editingCartItemIndex !== null) {
@@ -334,7 +371,9 @@ export const Cardapio: React.FC = () => {
         const { data: currentShiftCheck } = await supabase
             .from('shifts')
             .select('*')
+
             .eq('status', 'open')
+            .neq('opened_at', new Date().toISOString())
             .maybeSingle();
 
         if (!currentShiftCheck) {
@@ -426,7 +465,7 @@ export const Cardapio: React.FC = () => {
             // GATILHO WHATSAPP: Mensagem Simplificada (SEM ADICIONAIS)
             const whatsappNeighborhoodName = deliveryAreas.find(da => String(da.id) === String(selectedNeighborhoodId))?.name || '';
 
-            // Formatar itens SEM mostrar adicionais (mas total inclui)
+            // Formatar itens SEM mostrar adicionais (but total includes)
             const itemsDetailed = cart.map(item => {
                 const cleanProductName = sanitizeText(item.product.name, true); // MAIÚSCULAS
                 let itemText = `${item.quantity}x ${cleanProductName} `;
@@ -529,13 +568,77 @@ export const Cardapio: React.FC = () => {
         );
     }
 
+    // 🚀 WELCOME SPLASH SCREEN (Mobile First)
+    if (!hasEntered) {
+        return (
+            <div className="min-h-screen bg-[#1C1C1E] flex flex-col items-center justify-center p-6 text-center animate-fade-in relative overflow-hidden">
+                {/* Background Glow */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#FFCC00]/5 rounded-full blur-[100px] pointer-events-none" />
+
+                <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.5 }}
+                    className="z-10 flex flex-col items-center gap-8"
+                >
+                    <div className="relative">
+                        <img
+                            src="/card_logo.png"
+                            alt="Mastercheff"
+                            className="w-40 h-40 object-contain drop-shadow-2xl"
+                        />
+                        {/* Pulse Ring */}
+                        <div className="absolute inset-0 rounded-full border border-[#FFCC00]/20 animate-[ping_3s_ease-in-out_infinite]" />
+                    </div>
+
+                    <div className="space-y-2">
+                        <h1 className="text-3xl font-bold text-white tracking-tight">
+                            Mastercheff <span className="text-[#FFCC00]">Food Truck</span>
+                        </h1>
+                        <p className="text-gray-400 text-sm max-w-[250px] mx-auto">
+                            O melhor xis da cidade, feito com carinho para você.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col items-center gap-4 w-full">
+                        <button
+                            onClick={handleEnterStore}
+                            disabled={loading && hasEntered} // Prevent double click if transition is happening
+                            className="group relative px-8 py-4 bg-[#FFCC00] text-black font-bold rounded-full text-lg shadow-[0_0_20px_rgba(255,204,0,0.3)] hover:shadow-[0_0_30px_rgba(255,204,0,0.5)] hover:bg-[#E5B800] transition-all active:scale-95 overflow-hidden w-full max-w-[300px]"
+                        >
+                            <span className="relative z-10 flex items-center justify-center gap-2">
+                                {loading && hasEntered ? (
+                                    <>Carregando... <Clock className="animate-spin" size={20} /></>
+                                ) : (
+                                    "QUERO FAZER MEU PEDIDO"
+                                )}
+                            </span>
+
+                            {/* Button Shine Effect */}
+                            <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/20 to-transparent z-0" />
+                        </button>
+                    </div>
+
+                    <p className="text-[10px] text-gray-700 mt-8 uppercase tracking-widest opacity-20 font-mono">
+                        V5.0 DEBUG • {fetchTime || 'WAITING'}
+                    </p>
+                    {debugInfo && (
+                        <p className="text-[10px] text-red-500 font-mono bg-black/50 px-2 py-1 rounded border border-red-900/30">
+                            LOG: {debugInfo}
+                        </p>
+                    )}
+                </motion.div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-black text-white flex flex-col font-sans selection:bg-[#FFCC00] selection:text-black">
             {/* MINIMALIST HEADER */}
             <header className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-b border-white/5">
                 <div className="container mx-auto px-4 pt-8 pb-2 flex flex-col items-center justify-center gap-1 relative">
                     <img
-                        src="/logo.png"
+                        src="/card_logo.png"
                         alt="Mastercheff"
                         className="w-16 h-16 md:w-20 md:h-20 object-contain"
                     />
@@ -543,7 +646,8 @@ export const Cardapio: React.FC = () => {
                         Mastercheff Food Truck
                     </h1>
                     {/* Status Dot (absolute positioned) */}
-                    <div className={`absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${isStoreOpen ? 'bg-green-500 shadow-[0_0_8px_limegreen]' : 'bg-red-500'}`} />
+                    {/* Status Dot (absolute positioned) */}
+                    <div className={`absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full ${isStoreOpen === true ? 'bg-green-500 shadow-[0_0_8px_limegreen]' : isStoreOpen === false ? 'bg-red-500' : 'bg-yellow-500 animate-pulse'}`} />
                 </div>
             </header>
 
@@ -551,9 +655,9 @@ export const Cardapio: React.FC = () => {
             <div className="h-32"></div>
 
 
-            {/* Modal de Loja Fechada (Apple Dark) */}
+            {/* Modal de Loja Fechada (Apple Dark) - Só exibe se certeza que está fechado */}
             {
-                !isStoreOpen && !loading && (
+                isStoreOpen === false && !loading && (
                     <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-fade-in">
                         <div className="text-center space-y-4 max-w-sm">
                             <div className="w-20 h-20 bg-[#1C1C1E] rounded-full flex items-center justify-center mx-auto mb-4 border border-white/10 shadow-2xl">
@@ -563,10 +667,22 @@ export const Cardapio: React.FC = () => {
                             <p className="text-gray-400 text-lg leading-relaxed">
                                 No momento estamos fechados. Aguarde a abertura do caixa para fazer seu pedido.
                             </p>
-                            <div className="pt-4">
+                            <div className="pt-4 flex flex-col gap-3">
                                 <span className="inline-block px-4 py-2 bg-[#1C1C1E] rounded-lg text-sm font-medium text-gray-500 border border-white/5">
                                     Acompanhe nosso status em tempo real
                                 </span>
+                                {/* 🔥 V4: HARD RELOAD TRIGGER */}
+                                <button
+                                    onClick={() => window.location.reload()}
+                                    className="text-[#FFCC00] text-sm font-bold underline decoration-dotted hover:text-white transition-colors"
+                                >
+                                    Atualizar Página (Forçar)
+                                </button>
+                                {debugInfo && (
+                                    <div className="mt-2 p-2 bg-red-900/20 border border-red-500/20 rounded text-[10px] text-red-400 font-mono text-left w-full overflow-hidden break-words">
+                                        DEBUG: {debugInfo}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -756,7 +872,7 @@ export const Cardapio: React.FC = () => {
                                     disabled={!isStoreOpen}
                                     className="w-full py-4 bg-[#FFCC00] text-black font-bold text-lg rounded-2xl hover:bg-[#E5B800] transition-all active:scale-95 disabled:opacity-50 disabled:bg-gray-600 shadow-lg shadow-orange-500/10"
                                 >
-                                    {isStoreOpen ? 'Finalizar Pedido' : 'Loja Fechada 🔒'}
+                                    {isStoreOpen === true ? 'Finalizar Pedido' : isStoreOpen === false ? 'Loja Fechada 🔒' : 'Verificando...'}
                                 </button>
                             </div>
                         </div>
@@ -1037,8 +1153,10 @@ export const Cardapio: React.FC = () => {
                                     >
                                         {sending ? (
                                             <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
-                                        ) : !isStoreOpen ? (
+                                        ) : isStoreOpen === false ? (
                                             'Loja Fechada 🔒'
+                                        ) : isStoreOpen === null ? (
+                                            'Verificando...'
                                         ) : (
                                             <>
                                                 <Send size={20} />
